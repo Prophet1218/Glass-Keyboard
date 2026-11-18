@@ -62,6 +62,9 @@ class PopupOverlay(context: Context) : View(context) {
     private var popupSelected = 0
     private var lensX = 0f
     private var lensTarget = 0f
+    private var lensV = 0f
+    private var lensPress = 0f
+    private var lensFrame = 0L
     private var itemW = 0f
     private var itemsLeft = 0f
     private var lastPreviewEnd = 0L
@@ -120,7 +123,7 @@ class PopupOverlay(context: Context) : View(context) {
         val n = now()
         // in quick succession (fast typing) the next balloon starts half-grown: snappy, not jumpy
         val visible = previewText != null && preview.hideAt == 0L
-        b.shownAt = if (visible || n - lastPreviewEnd < 120) n - 55 else n
+        b.shownAt = if (visible || n - lastPreviewEnd < 120) n - Anim.ms(55f).toLong() else n
         b.hideAt = 0
         previewText = text
         postInvalidateOnAnimation()
@@ -162,6 +165,9 @@ class PopupOverlay(context: Context) : View(context) {
         popupSelected = 0
         lensTarget = slotX(0)
         lensX = lensTarget
+        lensV = 0f
+        lensPress = 0f
+        lensFrame = now()
         renderPopupContent(t)
         postInvalidateOnAnimation()
         return floatArrayOf(itemsLeft - o.x, itemW, if (reversed) 1f else 0f)
@@ -348,7 +354,7 @@ class PopupOverlay(context: Context) : View(context) {
     private fun state(b: Bubble, style: Int, appearMs: Float): FloatArray? {
         val n = now()
         if (!animations || style == 3) return floatArrayOf(1f, 1f, 0f, 1f)
-        val a = ((n - b.shownAt) / appearMs).coerceIn(0f, 1f)
+        val a = ((n - b.shownAt) / Anim.ms(appearMs)).coerceIn(0f, 1f)
         var sx: Float
         var sy: Float
         var ty = 0f
@@ -377,7 +383,7 @@ class PopupOverlay(context: Context) : View(context) {
             }
         }
         if (b.hideAt != 0L) {
-            val h = ((n - b.hideAt) / 120f).coerceIn(0f, 1f)
+            val h = ((n - b.hideAt) / Anim.ms(130f)).coerceIn(0f, 1f)
             if (h >= 1f) return null
             val e = ease.getInterpolation(h)
             alpha *= 1f - e
@@ -429,16 +435,38 @@ class PopupOverlay(context: Context) : View(context) {
             } else {
                 begin(canvas, popup, t, st, popup.key.centerX())
                 drawLetters(canvas, t, st[3])
+                // spring-follow of the finger (damped, like a liquid slider thumb)
+                val n = now()
+                val dt = ((n - lensFrame) / 1000f).coerceIn(0f, 0.034f) * Anim.speed
+                lensFrame = n
                 if (animations) {
-                    lensX += (lensTarget - lensX) * 0.38f
-                    if (kotlin.math.abs(lensTarget - lensX) > 0.3f) again = true else lensX = lensTarget
-                } else lensX = lensTarget
-                // the draggable liquid-glass lens over the chosen letter
-                val inset = 3f * dp
-                lensRect.set(lensX - inset, popup.box.top + 3.5f * dp, lensX + itemW + inset, popup.box.bottom - 3.5f * dp)
+                    val k = 700f
+                    val damp = 2f * kotlin.math.sqrt(k) * 0.78f
+                    lensV += ((lensTarget - lensX) * k - lensV * damp) * dt
+                    lensX += lensV * dt
+                    if (kotlin.math.abs(lensTarget - lensX) > 0.3f || kotlin.math.abs(lensV) > 5f) again = true
+                    else {
+                        lensX = lensTarget; lensV = 0f
+                    }
+                    val pressTarget = if (popup.hideAt == 0L) 1f else 0f
+                    lensPress += (pressTarget - lensPress) * (1f - kotlin.math.exp(-dt * 18f))
+                    if (kotlin.math.abs(pressTarget - lensPress) > 0.01f) again = true
+                } else {
+                    lensX = lensTarget; lensV = 0f; lensPress = 1f
+                }
+                // the glass grows a little while held and stretches with its speed
+                val vel = (lensV / (2600f * dp / 3f)).coerceIn(-1f, 1f)
+                val grow = 1f + 0.10f * lensPress
+                val sx = grow / (1f - (kotlin.math.abs(vel) * 0.22f).coerceAtMost(0.2f))
+                val sy = grow * (1f - (kotlin.math.abs(vel) * 0.12f).coerceAtMost(0.15f))
+                val cx = lensX + itemW / 2f
+                val cy = popup.box.centerY()
+                val hw = (itemW / 2f + 2f * dp) * sx
+                val hh = (popup.box.height() / 2f - 4f * dp) * sy
+                lensRect.set(cx - hw, cy - hh, cx + hw, cy + hh)
                 lens.draw(
-                    canvas, lensRect, 12f * dp, 1.28f, 9f * dp,
-                    if (t.dark) 0x26FFFFFF else 0x2EFFFFFF, t.dark, st[3],
+                    canvas, lensRect, hh, 1.06f, 10f * dp, 12f * dp,
+                    if (t.dark) 0x1AFFFFFF else 0x2EFFFFFF, t.dark, st[3],
                 )
                 canvas.restore()
                 if (animations && (now() - popup.shownAt < 230 || popup.hideAt != 0L)) again = true

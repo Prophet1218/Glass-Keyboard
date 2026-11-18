@@ -51,6 +51,11 @@ A szógyakoriságok forrása a [wordfreq](https://github.com/rspeer/wordfreq) ad
 [FrequencyWords](https://github.com/hermitdave/FrequencyWords) (OpenSubtitles) lista, mindkettő CC BY-SA 4.0.
 Magyar: ~377 000 szóalak, angol: 160 000 szó. Újraépítés: `tools/build_dict.py`.
 
+## Köszönet
+
+A liquid glass lencse fénytörési modellje (lekerekített téglalap SDF, peremsávos fénytörés, színszórás)
+Kyant [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) projektjén alapul (Apache License 2.0).
+
 ## Verziózás
 
 `fő.funkció.javítás` – 0.0.2-től lépkedünk felfelé.

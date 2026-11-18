@@ -134,8 +134,19 @@ object Layouts {
         return KbLayout(LayoutKind.LETTERS, rows)
     }
 
-    fun symbols(hu: Boolean, field: FieldKind, period: Boolean = false): KbLayout {
-        val rows = ArrayList<KbRow>()
+    /** Rows of suggested emoji that fill the space the symbol pages have left over. */
+    private fun emojiRows(count: Int, emoji: List<String>): List<KbRow> {
+        val out = ArrayList<KbRow>()
+        for (r in 0 until count) {
+            val slice = emoji.drop(r * 10).take(10)
+            if (slice.isEmpty()) break
+            out += KbRow(slice.map { Key(KeyType.TEXT, it, it, 1f) }, (10 - slice.size) / 2f)
+        }
+        return out
+    }
+
+    fun symbols(hu: Boolean, field: FieldKind, period: Boolean = false, extraRows: Int = 0, emoji: List<String> = emptyList()): KbLayout {
+        val rows = ArrayList<KbRow>(emojiRows(extraRows, emoji))
         rows += row("1 2 3 4 5 6 7 8 9 0", hu)
         rows += row(if (hu) "- / : ; ( ) Ft & @ \"" else "- / : ; ( ) $ & @ \"", hu)
         val third = ArrayList<Key>()
@@ -147,8 +158,8 @@ object Layouts {
         return KbLayout(LayoutKind.SYMBOLS, rows)
     }
 
-    fun more(hu: Boolean, field: FieldKind, period: Boolean = false): KbLayout {
-        val rows = ArrayList<KbRow>()
+    fun more(hu: Boolean, field: FieldKind, period: Boolean = false, extraRows: Int = 0, emoji: List<String> = emptyList()): KbLayout {
+        val rows = ArrayList<KbRow>(emojiRows(extraRows, emoji))
         rows += row("[ ] { } # % ^ * + =", hu)
         rows += row(if (hu) "_ \\ | ~ < > € $ £ •" else "_ \\ | ~ < > € £ ¥ •", hu)
         val third = ArrayList<Key>()

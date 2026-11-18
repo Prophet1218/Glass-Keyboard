@@ -50,7 +50,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         set(v) {
             if (field != null && field !== v) {
                 layoutChangedAt = SystemClock.uptimeMillis()
-                if (animations) captureSnapshot()
+                if (animations) oldLayout = field
             }
             field = v
             requestLayout()
@@ -216,11 +216,11 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         if (pressed) {
             releaseAt.remove(k)
             val st = pressStart.getOrPut(k) { now }
-            return if (!animations) 1f else ((now - st) / 60f).coerceIn(0f, 1f)
+            return if (!animations) 1f else ((now - st) / Anim.ms(60f)).coerceIn(0f, 1f)
         }
         if (pressStart.remove(k) != null && animations) releaseAt[k] = now
         val u = releaseAt[k] ?: return 0f
-        val q = 1f - (now - u) / 180f
+        val q = 1f - (now - u) / Anim.ms(200f)
         if (q <= 0f) {
             releaseAt.remove(k)
             return 0f
@@ -231,26 +231,20 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
     private val glowRect = RectF()
     private var labelAlpha = 255
     private var animating = false
-    private var snapshot: android.graphics.Bitmap? = null
-    private var snapshotOn = false
-    private val snapPaint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
-    private val switchMs = 140f
-    private val decel = android.view.animation.DecelerateInterpolator(1.6f)
+    private var oldLayout: KbLayout? = null
+    private val switchMs get() = Anim.ms(260f)
+    private val decel = android.view.animation.DecelerateInterpolator(1.8f)
+    private val morphRect = RectF()
 
-    /** Freezes the current keys into a bitmap, faded out over the new layout (123 ⇄ ABC). */
-    private fun captureSnapshot() {
-        if (width <= 0 || height <= 0 || layout == null) return
-        var b = snapshot
-        if (b == null || b.width != width || b.height != height) {
-            b = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
-            snapshot = b
-        }
-        b.eraseColor(0)
-        val c = Canvas(b)
-        labelAlpha = 255
-        for (row in layout!!.rows) for (k in row.keys) drawKey(c, k, 0f, theme)
-        snapshotOn = true
+    /** Key of the previous page that a key of the new page grows out of (123 ⇄ ABC morph). */
+    private fun sourceOf(old: KbLayout, rowIndex: Int, k: Key): Key? {
+        val rows = old.rows
+        if (rows.isEmpty()) return null
+        val row = if (rows.size == layout?.rows?.size) rows[rowIndex] else rows.minByOrNull { kotlin.math.abs(it.keys.firstOrNull()?.rect?.centerY()?.minus(k.rect.centerY()) ?: 1e6f) }!!
+        return row.keys.minByOrNull { kotlin.math.abs(it.rect.centerX() - k.rect.centerX()) }
     }
+
+    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
     override fun onDraw(canvas: Canvas) {
         val l = layout ?: return
@@ -260,23 +254,35 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         val pressed = HashSet<Key>()
         for (i in 0 until pointers.size()) pointers.valueAt(i).key?.let { if (!pointers.valueAt(i).consumed || it.type != KeyType.CHAR) pressed += it }
         val since = now - layoutChangedAt
-        val sw = if (!animations || since >= switchMs) 1f else decel.getInterpolation(since / switchMs)
-        labelAlpha = (255 * sw).toInt()
-        if (sw < 1f) animating = true
+        val old = oldLayout
+        val sw = if (!animations || old == null || since >= switchMs) 1f else decel.getInterpolation(since / switchMs)
+        if (sw >= 1f) oldLayout = null else animating = true
 
-        for (row in l.rows) for (k in row.keys) {
+        // page switch: the keys flow from their old places to the new ones while the old
+        // labels fade out and the new ones fade in — a soft morph, nothing jumps
+        labelAlpha = if (sw >= 1f) 255 else (255 * ((sw - 0.35f) / 0.65f).coerceIn(0f, 1f)).toInt()
+        for ((ri, row) in l.rows.withIndex()) for (k in row.keys) {
             val p = pressProgress(k, k in pressed, now)
             if (p > 0f && p < 1f) animating = true
             if (k in pressed && p < 1f) animating = true
-            drawKey(canvas, k, p, t)
-        }
-        val snap = snapshot
-        if (snapshotOn && snap != null) {
-            if (sw >= 1f) snapshotOn = false
-            else {
-                snapPaint.alpha = (255 * (1f - sw)).toInt()
-                canvas.drawBitmap(snap, 0f, 0f, snapPaint)
+            var r = k.rect
+            if (sw < 1f && old != null) {
+                val src = sourceOf(old, ri, k)
+                if (src != null) {
+                    morphRect.set(
+                        lerp(src.rect.left, k.rect.left, sw), lerp(src.rect.top, k.rect.top, sw),
+                        lerp(src.rect.right, k.rect.right, sw), lerp(src.rect.bottom, k.rect.bottom, sw),
+                    )
+                    r = morphRect
+                }
             }
+            drawKey(canvas, k, p, t, r)
+        }
+        if (sw < 1f && old != null) {
+            val keep = labelAlpha
+            labelAlpha = (255 * (1f - sw / 0.6f).coerceIn(0f, 1f)).toInt()
+            if (labelAlpha > 0) for (row in old.rows) for (k in row.keys) drawLabel(canvas, k, t)
+            labelAlpha = keep
         }
         if (showGlobe) drawStripIcon(canvas, globeKey, globeIcon, pressProgress(globeKey, globeKey in pressed, now), t)
         if (showMic) drawStripIcon(canvas, micKey, micIcon, pressProgress(micKey, micKey in pressed, now), t)
@@ -300,8 +306,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         d.draw(c)
     }
 
-    private fun drawKey(c: Canvas, k: Key, p: Float, t: GlassTheme) {
-        val r = k.rect
+    private fun drawKey(c: Canvas, k: Key, p: Float, t: GlassTheme, r: RectF = k.rect) {
         val color = when {
             k.type == KeyType.ENTER && enterAccent -> GlassTheme.lerpColor(t.accent, t.accentPressed, p)
             k.type == KeyType.SHIFT && shift > 0 -> t.keyActive
@@ -329,12 +334,11 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             t.fill.alpha = 255
         }
         t.drawKey(c, r, if (style == 2) GlassTheme.lerpColor(color, if (k.special) t.keySpecial else t.key, p * 0.7f) else color)
-        if (!cursorMode) drawLabel(c, k, t)
+        if (!cursorMode) drawLabel(c, k, t, r)
         c.restore()
     }
 
-    private fun drawLabel(c: Canvas, k: Key, t: GlassTheme) {
-        val r = k.rect
+    private fun drawLabel(c: Canvas, k: Key, t: GlassTheme, r: RectF = k.rect) {
         val cx = r.centerX()
         val cy = r.centerY()
         val ink = if (k.type == KeyType.ENTER && enterAccent) 0xFFFFFFFF.toInt()
@@ -369,6 +373,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
                 val letter = s.length == 1 && s[0].isLetter()
                 if (letter && shift > 0) s = s.uppercase(locale)
                 val size = when {
+                    k.type == KeyType.TEXT -> 23f
                     s.length > 2 -> 16f
                     l2(s) -> 20f
                     letter -> 24f

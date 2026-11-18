@@ -14,11 +14,14 @@ import android.graphics.Shader
 import android.os.Build
 
 /**
- * A real "liquid glass" capsule: it refracts what lies under it. The content below is magnified,
- * bent strongly near the rim (like the edge of a thick glass lens), split into colours a little
- * at the very edge (chromatic aberration), and lit with a specular highlight on top and a soft
- * glow at the bottom. Uses an AGSL runtime shader (Android 13+); older systems get a magnifier
- * with highlights.
+ * A real "liquid glass" capsule that refracts what lies under it.
+ *
+ * The refraction model follows Kyant's AndroidLiquidGlass (Apache License 2.0,
+ * https://github.com/Kyant0/AndroidLiquidGlass): the inside of the glass shows the content
+ * unchanged (optionally slightly magnified), and only a band along the rim bends it inwards with a
+ * circular profile, with a little colour dispersion towards the corners. On top come an ambient
+ * rim highlight (bright on the lit side, faintly dark on the other) and a soft body tint.
+ * Android 13+ uses an AGSL runtime shader; older systems get a simple tinted magnifier.
  */
 class LiquidLens(private val dp: Float) {
 
@@ -53,21 +56,29 @@ class LiquidLens(private val dp: Float) {
     }
 
     /**
-     * Draws the lens over [r].
-     * @param mag magnification of the content (1 = none)
-     * @param refraction how far the rim bends the content, in px
-     * @param tint glass body colour (ARGB, alpha = how milky the glass is)
+     * Draws the glass over [r].
+     * @param mag magnification of the content inside (1 = none)
+     * @param height width of the refracting rim band, px
+     * @param amount how far the rim bends the content, px
+     * @param tint glass body colour (ARGB; alpha = how milky the glass is)
      */
-    fun draw(c: Canvas, r: RectF, radius: Float, mag: Float, refraction: Float, tint: Int, dark: Boolean, alpha: Float = 1f, shadow: Boolean = true) {
+    fun draw(
+        c: Canvas, r: RectF, radius: Float, mag: Float, height: Float, amount: Float,
+        tint: Int, dark: Boolean, alpha: Float = 1f, shadow: Boolean = true,
+    ) {
         if (alpha <= 0f) return
+        val rad = minOf(radius, r.height() / 2f, r.width() / 2f)
         if (shadow) {
             c.save()
             path.reset()
-            path.addRoundRect(r, radius, radius, Path.Direction.CW)
+            path.addRoundRect(r, rad, rad, Path.Direction.CW)
             c.clipOutPath(path)
-            shadowPaint.color = Color.argb((if (dark) 90 else 46) * alpha.coerceIn(0f, 1f), 0f, 0f, 0f)
-            tmp.set(r.left - 0.5f * dp, r.top + 1.5f * dp, r.right + 0.5f * dp, r.bottom + 3f * dp)
-            c.drawRoundRect(tmp, radius + dp, radius + dp, shadowPaint)
+            for (i in 1..3) {
+                shadowPaint.color = Color.argb(((if (dark) 34 else 14) * alpha).toInt(), 0, 0, 0)
+                val g = i * 1.3f * dp
+                tmp.set(r.left - g * 0.4f, r.top + g * 0.3f, r.right + g * 0.4f, r.bottom + g)
+                c.drawRoundRect(tmp, rad + g, rad + g, shadowPaint)
+            }
             c.restore()
         }
         val sh = shader
@@ -76,9 +87,11 @@ class LiquidLens(private val dp: Float) {
             sh.setInputShader("content", cs)
             sh.setFloatUniform("center", r.centerX(), r.centerY())
             sh.setFloatUniform("halfSize", r.width() / 2f, r.height() / 2f)
-            sh.setFloatUniform("radius", minOf(radius, r.height() / 2f, r.width() / 2f))
+            sh.setFloatUniform("radius", rad)
             sh.setFloatUniform("mag", mag)
-            sh.setFloatUniform("refr", refraction)
+            sh.setFloatUniform("refrHeight", minOf(height, rad, r.width() / 2f))
+            sh.setFloatUniform("refrAmount", amount)
+            sh.setFloatUniform("dispersion", 1f)
             val a = Color.alpha(tint) / 255f
             sh.setFloatUniform("tint", Color.red(tint) / 255f * a, Color.green(tint) / 255f * a, Color.blue(tint) / 255f * a, a)
             sh.setFloatUniform("light", if (dark) 0f else 1f)
@@ -93,14 +106,11 @@ class LiquidLens(private val dp: Float) {
             shader = null
             paint.shader = null
         }
-        // fallback: magnified content + tinted body + rim light
+        // fallback: tinted body + magnified content + rim light
         c.save()
         path.reset()
-        path.addRoundRect(r, radius, radius, Path.Direction.CW)
+        path.addRoundRect(r, rad, rad, Path.Direction.CW)
         c.clipPath(path)
-        fallback.color = tint
-        fallback.alpha = (Color.alpha(tint) * alpha).toInt()
-        c.drawRect(r, fallback)
         content?.let {
             c.save()
             c.scale(mag, mag, r.centerX(), r.centerY())
@@ -108,12 +118,15 @@ class LiquidLens(private val dp: Float) {
             c.drawBitmap(it, contentLeft, contentTop, fallback)
             c.restore()
         }
+        fallback.color = tint
+        fallback.alpha = (Color.alpha(tint) * alpha).toInt()
+        c.drawRect(r, fallback)
         c.restore()
-        rimPaint.strokeWidth = 1.3f * dp
-        rimPaint.shader = LinearGradient(0f, r.top, 0f, r.bottom, intArrayOf(0xF2FFFFFF.toInt(), 0x1AFFFFFF, 0x80FFFFFF.toInt()), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        rimPaint.strokeWidth = 1.2f * dp
+        rimPaint.shader = LinearGradient(0f, r.top, 0f, r.bottom, intArrayOf(0xE6FFFFFF.toInt(), 0x14FFFFFF, 0x66FFFFFF), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         rimPaint.alpha = (255 * alpha).toInt()
         tmp.set(r.left + 0.6f * dp, r.top + 0.6f * dp, r.right - 0.6f * dp, r.bottom - 0.6f * dp)
-        c.drawRoundRect(tmp, radius, radius, rimPaint)
+        c.drawRoundRect(tmp, rad, rad, rimPaint)
         rimPaint.shader = null
     }
 
@@ -124,51 +137,88 @@ uniform float2 center;
 uniform float2 halfSize;
 uniform float radius;
 uniform float mag;
-uniform float refr;
+uniform float refrHeight;
+uniform float refrAmount;
+uniform float dispersion;
 uniform float4 tint;
 uniform float light;
 uniform float alpha;
 
-float sdRR(float2 p, float2 b, float r) {
-    float2 q = abs(p) - b + float2(r, r);
-    return length(max(q, float2(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - r;
+// rounded-rectangle SDF and its gradient: adapted from Kyant's AndroidLiquidGlass (Apache-2.0)
+float sdRoundedRect(float2 coord, float2 hs, float r) {
+    float2 cornerCoord = abs(coord) - (hs - float2(r, r));
+    float outside = length(max(cornerCoord, 0.0)) - r;
+    float inside = min(max(cornerCoord.x, cornerCoord.y), 0.0);
+    return outside + inside;
+}
+
+float2 gradSdRoundedRect(float2 coord, float2 hs, float r) {
+    float2 cornerCoord = abs(coord) - (hs - float2(r, r));
+    if (cornerCoord.x >= 0.0 || cornerCoord.y >= 0.0) {
+        float2 m = max(cornerCoord, 0.0);
+        float l = length(m);
+        return sign(coord) * (l > 0.0001 ? m / l : float2(0.0, 1.0));
+    } else {
+        float gradX = step(cornerCoord.y, cornerCoord.x);
+        return sign(coord) * float2(gradX, 1.0 - gradX);
+    }
+}
+
+float circleMap(float x) {
+    return 1.0 - sqrt(max(1.0 - x * x, 0.0));
 }
 
 half4 main(float2 xy) {
     float2 p = xy - center;
-    float d = sdRR(p, halfSize, radius);
-    float cover = 1.0 - smoothstep(-0.8, 0.8, d);
+    float sd = sdRoundedRect(p, halfSize, radius);
+    float cover = 1.0 - smoothstep(-0.75, 0.75, sd);
     if (cover <= 0.0) { return half4(0.0); }
-    float h = min(halfSize.x, halfSize.y);
-    float depth = clamp(-d / h, 0.0, 1.0);
-    float bend = pow(1.0 - depth, 2.4);
-    float2 n = float2(
-        sdRR(p + float2(1.0, 0.0), halfSize, radius) - sdRR(p - float2(1.0, 0.0), halfSize, radius),
-        sdRR(p + float2(0.0, 1.0), halfSize, radius) - sdRR(p - float2(0.0, 1.0), halfSize, radius));
-    float nl = length(n);
-    n = nl > 0.0001 ? n / nl : float2(0.0, -1.0);
 
-    // refraction: magnify, and pull the content inwards near the rim
-    float2 src = center + p / mag - n * bend * refr;
-    float ca = bend * 2.2;
-    float4 base = float4(content.eval(src));
-    float4 cr = float4(content.eval(src - n * ca));
-    float4 cb = float4(content.eval(src + n * ca));
-    float4 col = float4(cr.r, base.g, cb.b, max(base.a, max(cr.a, cb.a)));
+    float2 base = center + p / mag;
+    float gradRadius = min(radius * 1.5, min(halfSize.x, halfSize.y));
+    float2 grad = gradSdRoundedRect(p, halfSize, gradRadius);
+    float s = min(sd, 0.0);
 
-    // glass body behind the refracted content
+    float4 col;
+    if (-s >= refrHeight) {
+        col = float4(content.eval(base));
+    } else {
+        // the rim band bends the view inwards with a circular profile
+        float d = circleMap(1.0 - (-s) / refrHeight) * (-refrAmount);
+        float2 rc = base + d * grad;
+        float di = dispersion * (p.x * p.y) / (halfSize.x * halfSize.y);
+        float2 dc = d * grad * di;
+        float4 cr = float4(content.eval(rc + dc));
+        float4 cg = float4(content.eval(rc));
+        float4 cb = float4(content.eval(rc - dc));
+        col = float4(cr.r, cg.g, cb.b, (cr.a + cg.a + cb.a) / 3.0);
+    }
+
+    // glass body behind the refracted view
     float4 res = col + tint * (1.0 - col.a);
 
-    // light: specular along the top rim, soft glow along the bottom, thin bright edge
-    float rim = pow(1.0 - depth, 5.0);
-    float spec = rim * clamp(-n.y * 0.85 - n.x * 0.3, 0.0, 1.0);
-    float glow = rim * clamp(n.y, 0.0, 1.0) * 0.5;
-    float edge = 1.0 - smoothstep(0.0, 1.6, -d);
-    float add = (spec * 0.85 + glow + edge * 0.35) * mix(0.6, 1.0, light);
-    res = float4(res.rgb + float3(add, add, add), max(res.a, add));
-    res = clamp(res, 0.0, 1.0);
-    res.rgb = min(res.rgb, float3(res.a, res.a, res.a));
-    return half4(res * (cover * alpha));
+    // ambient rim highlight: bright on the side facing the light, faintly dark opposite
+    float rim = 1.0 - smoothstep(0.0, 1.6, -sd);
+    float dl = dot(grad, normalize(float2(-0.35, -1.0)));
+    float lit = pow(abs(dl), 1.4) * rim;
+    float3 rgb = res.rgb;
+    float a = res.a;
+    if (dl > 0.0) {
+        float w = lit * mix(0.55, 0.9, light);
+        rgb = rgb + float3(w, w, w) * (1.0 - rgb);
+        a = a + w * (1.0 - a);
+    } else {
+        rgb = rgb * (1.0 - lit * 0.18);
+        a = a + lit * 0.12 * (1.0 - a);
+    }
+    // a soft sheen inside the upper rim
+    float sheen = (1.0 - smoothstep(0.0, refrHeight * 1.4, -sd)) * clamp(-grad.y, 0.0, 1.0) * 0.10 * mix(0.6, 1.0, light);
+    rgb = rgb + float3(sheen, sheen, sheen) * (1.0 - rgb);
+    a = a + sheen * (1.0 - a);
+
+    float4 outc = clamp(float4(rgb, a), 0.0, 1.0);
+    outc.rgb = min(outc.rgb, float3(outc.a, outc.a, outc.a));
+    return half4(outc * (cover * alpha));
 }
 """
     }

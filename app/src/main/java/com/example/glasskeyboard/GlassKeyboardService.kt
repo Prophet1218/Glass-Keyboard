@@ -231,10 +231,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         kb = KeyboardView(this, this, overlay)
         bar = CandidateBar(this) { pickCandidate(it) }
         bar.onTapAt = { x, y ->
-            if (prefs.chaos) {
-                if (prefs.animations) overlay.burst(bar, x, y)
-                chaosBuzz()
-            }
+            if (prefs.chaos) chaosBuzz()
         }
         emoji = EmojiView(this, this, prefs)
         emoji.visibility = View.GONE
@@ -348,6 +345,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         bar.animations = prefs.animations
         bar.style = prefs.suggAnim
         kb.pressStyle = prefs.pressAnim
+        Anim.speed = prefs.animSpeed / 100f
         kb.locale = engine().locale
         kb.minRows = letterRows()
         kb.spaceLabel = ""
@@ -404,8 +402,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val h = hu
         kb.layout = when (kind) {
             LayoutKind.LETTERS -> Layouts.letters(h, prefs.accentRow, field, prefs.numberRow, prefs.periodKey)
-            LayoutKind.SYMBOLS -> Layouts.symbols(h, field, prefs.periodKey)
-            LayoutKind.MORE -> Layouts.more(h, field, prefs.periodKey)
+            LayoutKind.SYMBOLS -> Layouts.symbols(h, field, prefs.periodKey, letterRows() - 4, suggestedEmoji())
+            LayoutKind.MORE -> Layouts.more(h, field, prefs.periodKey, letterRows() - 4, suggestedEmoji())
             LayoutKind.NUMBER -> {
                 val t = currentInputEditorInfo?.inputType ?: 0
                 Layouts.number(h, t and InputType.TYPE_NUMBER_FLAG_SIGNED != 0, t and InputType.TYPE_NUMBER_FLAG_DECIMAL != 0)
@@ -414,6 +412,14 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         }
         kb.shift = if (kind == LayoutKind.LETTERS) shift else 0
         if (kind == LayoutKind.LETTERS) updateShift()
+    }
+
+    /** Recently used emoji first, then popular ones (for the spare rows of the symbol pages). */
+    private fun suggestedEmoji(): List<String> {
+        val out = LinkedHashSet<String>()
+        prefs.recentEmoji.split(" ").filter { it.isNotEmpty() }.forEach { out += it }
+        "😂 ❤️ 😍 🥰 😊 👍 🙏 😭 🔥 😘 🤣 😅 😉 🥲 😎 🤔 🙌 👏 💪 🎉 ✨ 💯 😢 😡 🤗 😴 🙈 👌 💕 ✅".split(" ").forEach { out += it }
+        return out.toList()
     }
 
     private fun letterRows() = Layouts.letters(hu, prefs.accentRow, field, prefs.numberRow, prefs.periodKey).rows.size
@@ -425,7 +431,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         if (wasEmoji && prefs.animations) {
             kb.alpha = 0f
             kb.translationY = 10 * resources.displayMetrics.density
-            kb.animate().alpha(1f).translationY(0f).setDuration(200).start()
+            kb.animate().alpha(1f).translationY(0f).setDuration(Anim.ms(220f).toLong()).start()
         }
     }
 
@@ -659,6 +665,9 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             autoSpace = false
             ic.commitText(text, 1)
             lastCorrection = null
+            if (text.isNotEmpty() && text.codePointAt(0) >= 0x2600 && Character.getType(text.codePointAt(0)) == Character.OTHER_SYMBOL.toInt()) {
+                emoji.addRecent(text)
+            }
         }
         if (layoutKind == LayoutKind.SYMBOLS || layoutKind == LayoutKind.MORE) {
             if (text == "'" || text == "’") setLayout(LayoutKind.LETTERS)
@@ -810,7 +819,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         if (prefs.animations) {
             emoji.alpha = 0f
             emoji.translationY = 14 * resources.displayMetrics.density
-            emoji.animate().alpha(1f).translationY(0f).setDuration(220).start()
+            emoji.animate().alpha(1f).translationY(0f).setDuration(Anim.ms(240f).toLong()).start()
         }
     }
 

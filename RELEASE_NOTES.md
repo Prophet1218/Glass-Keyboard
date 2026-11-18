@@ -1,8 +1,9 @@
-## Glass Keyboard 0.0.4
+## Glass Keyboard 0.0.5
 
-- **Valódi liquid glass:** a javaslatsáv kiemelő kapszulája és a hosszú nyomás választója is fénytörő üveglencse – nagyít, a peremén megtöri és színekre bontja ami alatta van, fényes felső él, lágy alsó fény
-- **Húzható üveglencse** az ékezetválasztóban: folyamatosan követi az ujjad, betűváltáskor apró rezgés
-- **Kaotikus visszajelzés** javaslatra koppintáskor: színes üvegkonfetti és szikrák, a szó megugrik, rendhagyó rezgés (kikapcsolható)
-- **Animáció-változatok:** javaslatok (áttűnés, felúszás, nagyítás, gördülés, nincs), gombérintés (kiemelkedés, benyomódás, fénylés, nincs), betűbuborék (rugós, felúszás, áttűnés, azonnali), hosszú nyomás (rugós, szétnyílás oldalra, áttűnés)
-- **123 / ABC váltás:** a felugrás kivéve, csak gyors áttűnés
-- **Megnyitás javítva:** nincs többé láthatatlan sáv, ami felnyomta és visszaengedte az alkalmazás tartalmát; a megnyílási animáció most a billentyűzet lapján belül fut
+- **Liquid glass lencse újraírva** (Kyant AndroidLiquidGlass modellje alapján): a belseje tisztán mutatja ami alatta van, csak a pereme töri meg a képet körív szerint, finom színszórással; nincs több torz, kifordult betű
+- **Ékezetválasztó mint liquid slider:** a lencse rugósan követi az ujjad, tartás közben kicsit megnő, mozgás közben a sebességgel nyúlik
+- **Javaslat kapszula:** megszűnt a dupla (szellem) szó, az üveg alatt csak a megtört szó látszik
+- **Javaslatra koppintás:** nincs vizuális effekt, csak a kaotikus rezgés
+- **123 / ABC váltás:** lassabb, lágy átformálódás – a gombok a régi helyükről úsznak az újra, a feliratok áttűnnek
+- **Ajánlott emojik** a 123 oldalak üres soraiban (gyakran használtak elöl)
+- **Animációk sebessége** csúszka (50–200%), finomított időzítések

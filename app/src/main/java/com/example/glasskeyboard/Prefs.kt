@@ -54,6 +54,8 @@ class Prefs(context: Context) {
     /** long-press picker: 0 spring, 1 unfold sideways, 2 fade */
     val popupAnim get() = sp.getInt(K_POPUP_ANIM, 0)
     val chaos get() = b(K_CHAOS, true)
+    /** animation speed in percent (100 = normal) */
+    val animSpeed get() = sp.getInt(K_ANIM_SPEED, 100)
 
     /** 0 = off, 1 = light, 2 = strong */
     val haptics get() = sp.getInt(K_HAPTICS, 1)
@@ -100,5 +102,6 @@ class Prefs(context: Context) {
         const val K_PREVIEW_ANIM = "preview_anim"
         const val K_POPUP_ANIM = "popup_anim"
         const val K_CHAOS = "chaos"
+        const val K_ANIM_SPEED = "anim_speed"
     }
 }

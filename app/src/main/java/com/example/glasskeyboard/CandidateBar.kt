@@ -38,8 +38,13 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
     private val lens = LiquidLens(resources.displayMetrics.density)
     private var layer: android.graphics.Bitmap? = null
     private val lensRect = RectF()
-    private var pulseSlot = -1
-    private var pulseAt = 0L
+    private val clipPath = android.graphics.Path()
+    private val paintBmp = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+
+    private fun pillRect(i: Int, w: Float, h: Float) {
+        val l = i * w
+        lensRect.set(l + 6 * dp, 6 * dp, l + w - 6 * dp, h - 5 * dp)
+    }
 
     private var items: List<Candidate?> = listOf(null, null, null)
     private var old: List<Candidate?> = listOf(null, null, null)
@@ -51,7 +56,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
     private val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply { textAlign = android.graphics.Paint.Align.CENTER }
     private val tmp = RectF()
 
-    private val fadeMs = 130f
+    private val fadeMs get() = Anim.ms(150f)
 
     fun set(list: List<Candidate?>) {
         val n = List(3) { list.getOrNull(it) }
@@ -128,17 +133,34 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             }
             items[i]?.let { drawWord(target, it, i, l, w, h, a, true, now, t) }
         }
-        if (now - pulseAt < 280) again = true
         if (bmp != null) {
+            // the plain words everywhere except under the glass (no double image)…
+            canvas.save()
+            clipPath.reset()
+            for (i in 0 until 3) {
+                if (pills[i] <= 0f) continue
+                pillRect(i, w, h)
+                clipPath.addRoundRect(lensRect, lensRect.height() / 2f, lensRect.height() / 2f, android.graphics.Path.Direction.CW)
+            }
+            canvas.clipOutPath(clipPath)
             canvas.drawBitmap(bmp, 0f, 0f, null)
+            canvas.restore()
+            // …and under it, the refracted ones
             lens.setContent(bmp, 0f, 0f)
             for (i in 0 until 3) {
                 if (pills[i] <= 0f) continue
-                val l = i * w
-                lensRect.set(l + 5 * dp, 6 * dp, l + w - 5 * dp, h - 4 * dp)
+                pillRect(i, w, h)
+                // fading pills show the plain word through their transparent part
+                if (pills[i] < 1f) {
+                    canvas.save()
+                    canvas.clipRect(lensRect)
+                    paintBmp.alpha = (255 * (1f - pills[i])).toInt()
+                    canvas.drawBitmap(bmp, 0f, 0f, paintBmp)
+                    canvas.restore()
+                }
                 lens.draw(
-                    canvas, lensRect, lensRect.height() / 2f, 1.06f, 7f * dp,
-                    if (t.dark) 0x2EFFFFFF else 0x66FFFFFF, t.dark, pills[i],
+                    canvas, lensRect, lensRect.height() / 2f, 1f, 10f * dp, 10f * dp,
+                    if (t.dark) 0x24FFFFFF else 0x59FFFFFF, t.dark, pills[i],
                 )
             }
         }
@@ -175,13 +197,6 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             }
             3 -> canvas.translate(0f, if (incoming) k * h * 0.6f else -(1f - alpha) * h * 0.6f)
         }
-        if (incoming && slot == pulseSlot) {
-            val pt = ((now - pulseAt) / 280f).coerceIn(0f, 1f)
-            if (pt < 1f) {
-                val sc = 1f + 0.22f * kotlin.math.sin(pt * Math.PI).toFloat()
-                canvas.scale(sc, sc, cx, cy)
-            }
-        }
         canvas.drawText(s, cx, cy - (fm.ascent + fm.descent) / 2, paint)
         canvas.restore()
     }
@@ -204,8 +219,6 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
                 pressed = -1
                 invalidate()
                 if (p == i) items[p]?.let {
-                    pulseSlot = p
-                    pulseAt = SystemClock.uptimeMillis()
                     val w = width / 3f
                     onTapAt?.invoke(p * w + w / 2, height / 2f)
                     onPick(it)
