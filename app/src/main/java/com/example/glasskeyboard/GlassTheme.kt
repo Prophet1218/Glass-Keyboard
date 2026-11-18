@@ -40,7 +40,8 @@ class GlassTheme(
     val lensHeight get() = params.refrHeight / 3f * dp
     val lensAmount get() = params.refrOffset / 4f * dp * (if (params.convex) 1.5f else 1f)
     val lensDispersion get() = params.dispersion / 50f
-    val lensBlur get() = params.blur * 0.35f * dp
+    /** Only the matt (frosted) glass blurs what is under a lens; clear glass keeps text sharp. */
+    val lensBlur get() = if (frosted) (1.5f + params.blur * 0.25f) * dp else 0f
     val dp = context.resources.displayMetrics.density
     val sp = dp * context.resources.configuration.fontScale
 

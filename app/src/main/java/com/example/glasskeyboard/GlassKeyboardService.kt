@@ -255,9 +255,9 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         // draw the glass sheet behind the navigation bar too (no black band under the keys)
         if (Build.VERSION.SDK_INT >= 30) {
             window?.window?.let { w ->
+                // without this flag the system paints a black "legacy" bar under the keyboard
+                w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
                 w.setDecorFitsSystemWindows(false)
-                @Suppress("DEPRECATION")
-                w.navigationBarColor = android.graphics.Color.TRANSPARENT
                 w.isNavigationBarContrastEnforced = false
             }
             r.setOnApplyWindowInsetsListener { _, insets ->
@@ -283,21 +283,17 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     private fun styleNavBar(t: GlassTheme) {
         val w = window?.window ?: return
-        if (Build.VERSION.SDK_INT >= 30) {
-            @Suppress("DEPRECATION")
-            w.navigationBarColor = android.graphics.Color.TRANSPARENT
-            w.isNavigationBarContrastEnforced = false
-        }
+        w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
+        // same colour as the bottom of the glass sheet
+        @Suppress("DEPRECATION")
+        w.navigationBarColor = t.panelBottom or 0xFF000000.toInt()
         // see-through sheet: blur whatever the app shows behind the keyboard (Android 12+)
         if (Build.VERSION.SDK_INT >= 31) try {
             w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
             val blur = if (t.panelAlpha < 0.98f && !t.solid) (t.params.blur * 3f * t.dp + (if (t.frosted) 24f * t.dp else 0f)).toInt() else 0
             w.setBackgroundBlurRadius(blur)
         } catch (_: Exception) {
-        }
-        if (Build.VERSION.SDK_INT < 30) {
-            @Suppress("DEPRECATION")
-            w.navigationBarColor = t.panelBottom
         }
         if (Build.VERSION.SDK_INT >= 30) {
             w.insetsController?.setSystemBarsAppearance(

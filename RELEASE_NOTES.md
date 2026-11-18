@@ -1,6 +1,4 @@
-## Glass Keyboard 0.0.7
+## Glass Keyboard 0.0.8
 
-- **Üvegkapszulák javítva:** a fénytörés a kis kapszulákhoz méretezve – a szó és a betű alatta tiszta, nincs szellemkép; finomabb árnyék, kicsit szélesebb kijelölő
-- **Navigációs sáv:** a billentyűzet üveglapja a rendszer navigációs sávja mögé is kiterjed, nincs fekete csík alul
-- **Gombok sötétítése:** külön csúszka csak a gombokra
-- **Beállítások liquid glass vezérlőkkel:** a csúszkák és kapcsolók a Kyant-féle LiquidSlider / LiquidToggle mintájára – fehér fogantyú, ami megérintve megnő, fénytörő üveggé válik és mozgás közben nyúlik
+- **Dupla kép megszüntetve** az üvegkapszulákban: az elmosás okozta szellemképet (eltolt másolatok) kivettem; a folyékony üveg alatt a szöveg éles, matt üvegnél valódi, egyenletes elmosás van
+- **Navigációs sáv:** a rendszer nem fest többé fekete sávot a billentyűzet alá, a sáv a billentyűzet színét kapja

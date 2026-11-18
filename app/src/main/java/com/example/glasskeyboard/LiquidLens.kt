@@ -174,15 +174,16 @@ uniform float blur;
 uniform float rimOn;
 uniform float convex;
 
-// what is under the glass, optionally softened (frosted look)
+// what is under the glass, optionally softened (frosted look): 13-tap disc blur, no ghost copies
 float4 look(float2 c) {
     if (blur < 0.5) { return float4(content.eval(c)); }
-    float b = blur * 0.7;
-    float4 s = float4(content.eval(c)) * 0.2;
-    s += float4(content.eval(c + float2(b, b))) * 0.2;
-    s += float4(content.eval(c + float2(-b, b))) * 0.2;
-    s += float4(content.eval(c + float2(b, -b))) * 0.2;
-    s += float4(content.eval(c + float2(-b, -b))) * 0.2;
+    float4 s = float4(content.eval(c)) * 0.16;
+    for (int i = 0; i < 6; i++) {
+        float a = float(i) * 1.0472;
+        float2 o = float2(cos(a), sin(a));
+        s += float4(content.eval(c + o * blur * 0.5)) * 0.08;
+        s += float4(content.eval(c + float2(o.y, -o.x) * blur)) * 0.06;
+    }
     return s;
 }
 
