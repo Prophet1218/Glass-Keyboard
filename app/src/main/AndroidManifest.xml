@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- only for the GIF search (KLIPY); typing never goes online -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <queries>
         <intent>
@@ -34,6 +36,12 @@
             android:exported="false"
             android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <provider
+            android:name=".GifProvider"
+            android:authorities="com.example.glasskeyboard.gifs"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <service
             android:name=".GlassKeyboardService"

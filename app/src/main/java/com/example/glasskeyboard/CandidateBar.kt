@@ -49,11 +49,23 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
     private var toolPressed = -1
     private val chevW get() = 40f * dp
 
+    /** background of the toolbar buttons: 0 liquid glass, 1 frosted glass, 2 solid */
+    var toolGlass = 0
+    /** the tool whose panel is open (emoji, GIF, clipboard), highlighted; -1 = none */
+    var activeTool = -1
+        set(v) {
+            field = v
+            invalidate()
+        }
+    private val toolLens = LiquidLens(resources.displayMetrics.density)
+    private var iconLayer: android.graphics.Bitmap? = null
+    private val toolRect = RectF()
+
     companion object {
-        const val TOOL_EMOJI = 0
-        const val TOOL_CLIPBOARD = 1
-        const val TOOL_LANGUAGE = 2
-        const val TOOL_HIDE = 3
+        const val TOOL_HIDE = 0
+        const val TOOL_EMOJI = 1
+        const val TOOL_GIF = 2
+        const val TOOL_CLIPBOARD = 3
         const val TOOL_SETTINGS = 4
         private const val TOOLS = 5
     }
@@ -144,37 +156,88 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         if (again) postInvalidateOnAnimation() else toolFrame = 0L
     }
 
-    private fun toolIcon(c: Canvas, id: Int, cx: Float, cy: Float, s: Float, t: GlassTheme) {
+    private fun toolIcon(c: Canvas, id: Int, cx: Float, cy: Float, sz: Float, t: GlassTheme) {
         when (id) {
-            TOOL_EMOJI -> Icons.emoji(c, cx, cy, s, t.icon, t.iconFill)
-            TOOL_CLIPBOARD -> Icons.clipboard(c, cx, cy, s, t.icon)
-            TOOL_LANGUAGE -> Icons.globe(c, cx, cy, s, t.icon)
-            TOOL_HIDE -> Icons.hideKeyboard(c, cx, cy, s, t.icon)
-            else -> Icons.gear(c, cx, cy, s, t.icon)
+            TOOL_HIDE -> Icons.hideKeyboard(c, cx, cy, sz, t.icon)
+            TOOL_EMOJI -> Icons.emoji(c, cx, cy, sz, t.icon, t.iconFill)
+            TOOL_GIF -> Icons.gif(c, cx, cy, sz, t.icon, t.iconFill)
+            TOOL_CLIPBOARD -> Icons.clipboard(c, cx, cy, sz, t.icon)
+            else -> Icons.gear(c, cx, cy, sz, t.icon)
         }
     }
+
+    private fun drawIcons(c: Canvas, alpha: Float, t: GlassTheme) {
+        val w = width / TOOLS.toFloat()
+        val cy = toolCy()
+        for (i in 0 until TOOLS) {
+            val col = if (i == activeTool) t.accent else t.stripIcon
+            t.icon.color = col
+            t.iconFill.color = col
+            t.icon.alpha = (Color.alpha(col) * alpha).toInt()
+            t.iconFill.alpha = t.icon.alpha
+            toolIcon(c, i, w * i + w / 2, cy, 22 * dp, t)
+        }
+        t.icon.alpha = 255
+        t.iconFill.alpha = 255
+    }
+
+    /** Icons sit in the middle of the visible bar (a touch lower than the view's centre). */
+    private fun toolCy() = height / 2f + 2.5f * dp
 
     private fun drawToolbar(c: Canvas, alpha: Float) {
         val t = theme
         val w = width / TOOLS.toFloat()
-        val cy = height / 2f
+        val cy = toolCy()
+        val bw = minOf(w - 10 * dp, 52 * dp)
+        val bh = 34 * dp
+        // icons into a layer: the liquid glass buttons refract them
+        var layer = iconLayer
+        if (toolGlass == 0 && !t.solid && width > 0 && height > 0) {
+            if (layer == null || layer.width != width || layer.height != height) {
+                layer = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                iconLayer = layer
+            }
+            layer!!.eraseColor(0)
+            drawIcons(Canvas(layer), 1f, t)
+            toolLens.setContent(layer, 0f, 0f)
+        }
         for (i in 0 until TOOLS) {
             val cx = w * i + w / 2
-            if (i == toolPressed) {
-                t.fill.shader = null
-                t.fill.color = t.candidateHighlight
-                t.fill.alpha = (Color.alpha(t.candidateHighlight) * alpha).toInt()
-                c.drawCircle(cx, cy, 18 * dp, t.fill)
-                t.fill.alpha = 255
+            val press = if (i == toolPressed) 1f else 0f
+            val grow = 1f + 0.08f * press
+            toolRect.set(cx - bw / 2 * grow, cy - bh / 2 * grow, cx + bw / 2 * grow, cy + bh / 2 * grow)
+            val r = toolRect.height() / 2f
+            when {
+                toolGlass == 2 || t.solid -> {
+                    t.fill.shader = null
+                    t.fill.color = if (i == toolPressed) t.keySpecialPressed else t.keySpecial
+                    t.fill.alpha = (Color.alpha(t.fill.color) * alpha).toInt()
+                    c.drawRoundRect(toolRect, r, r, t.fill)
+                    t.fill.alpha = 255
+                }
+                toolGlass == 1 -> toolLens.drawRaw(
+                    c, toolRect, r, 1f, 0.5f, 0f, 0f, 0f, t.params.rim, t.params.convex,
+                    if (t.dark) 0x33FFFFFF else 0x99FFFFFF.toInt(), t.dark, alpha,
+                )
+                else -> toolLens.drawRaw(
+                    c, toolRect, r, 1f, minOf(t.lensHeight, r * 0.6f), t.lensAmount * 0.4f, t.lensDispersion, 0f,
+                    t.params.rim, t.params.convex, if (t.dark) 0x1FFFFFFF else 0x4DFFFFFF, t.dark, alpha,
+                )
             }
-            t.icon.color = t.stripIcon
-            t.iconFill.color = t.stripIcon
-            t.icon.alpha = (Color.alpha(t.stripIcon) * alpha).toInt()
-            t.iconFill.alpha = t.icon.alpha
-            toolIcon(c, i, cx, cy, 22 * dp, t)
         }
-        t.icon.alpha = 255
-        t.iconFill.alpha = 255
+        // the liquid buttons already show the icons (refracted); the others get them on top
+        if (!(toolGlass == 0 && !t.solid)) drawIcons(c, alpha, t)
+        else {
+            // icons between the buttons are not covered by glass: draw any part outside
+            c.save()
+            for (i in 0 until TOOLS) {
+                val cx = w * i + w / 2
+                toolRect.set(cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2)
+                c.clipOutRect(toolRect)
+            }
+            drawIcons(c, alpha, t)
+            c.restore()
+        }
     }
 
     /** Draws the three suggestion slots; returns true while something is animating. */

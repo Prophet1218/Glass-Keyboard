@@ -94,12 +94,17 @@ class Prefs(context: Context) {
 
     fun resetGlass() {
         sp.edit().remove(K_GLASS).remove(K_THEME).remove(K_HUE).remove(K_HUE_STRENGTH).remove(K_BLUR)
-            .remove(K_REFR_H).remove(K_REFR_OFF).remove(K_DISP).remove(K_GLASS_DARK).remove(K_KEY_DARK).remove(K_RIM).remove(K_CONVEX).remove(K_LENS_STYLE).remove(K_POPUP_GLASS).remove(K_PREVIEW_GLASS)
+            .remove(K_REFR_H).remove(K_REFR_OFF).remove(K_DISP).remove(K_GLASS_DARK).remove(K_KEY_DARK).remove(K_RIM).remove(K_CONVEX).remove(K_LENS_STYLE).remove(K_POPUP_GLASS).remove(K_PREVIEW_GLASS).remove(K_TOOL_GLASS)
             .remove(K_PANEL_OPACITY).remove(K_KEY_OPACITY).apply()
     }
 
     /** typing balloon material: 0 liquid glass, 1 frosted glass, 2 solid */
     val previewGlass get() = sp.getInt(K_PREVIEW_GLASS, 2)
+    /** toolbar button background: 0 liquid glass, 1 frosted glass, 2 solid */
+    val toolGlass get() = sp.getInt(K_TOOL_GLASS, 0)
+    /** Klipy GIF API key (free from partner.klipy.com) */
+    val klipyKey get() = sp.getString(K_KLIPY, "")?.trim() ?: ""
+
     /** toolbar in the suggestion bar while not typing */
     val toolbar get() = b(K_TOOLBAR, true)
 
@@ -169,5 +174,7 @@ class Prefs(context: Context) {
         const val K_POPUP_GLASS = "popup_glass"
         const val K_PREVIEW_GLASS = "preview_glass"
         const val K_TOOLBAR = "toolbar"
+        const val K_TOOL_GLASS = "tool_glass"
+        const val K_KLIPY = "klipy_key"
     }
 }

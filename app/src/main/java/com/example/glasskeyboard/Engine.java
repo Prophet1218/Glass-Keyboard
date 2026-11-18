@@ -155,14 +155,15 @@ public final class Engine {
         return v;
     }
 
+    /** How far (in weighted edits) a word may be from what was typed: longer words allow more. */
     private static double maxCost(int n) {
         if (n <= 1) return 0.15;
         if (n == 2) return 0.45;
-        if (n == 3) return 0.9;
-        if (n == 4) return 1.15;
-        if (n <= 6) return 1.45;
-        if (n <= 9) return 1.85;
-        return 2.2;
+        if (n == 3) return 1.0;
+        if (n == 4) return 1.35;
+        if (n <= 6) return 1.8;
+        if (n <= 9) return 2.4;
+        return 3.0;
     }
 
     // ---------------------------------------------------------------- trie search
@@ -624,7 +625,7 @@ public final class Engine {
     }
 
     private double score(Cand c, String prev) {
-        double s = c.freq / 31.0 - 2.6 * c.cost;
+        double s = c.freq / 31.0 - 2.4 * c.cost;
         if (c.completion) s -= 0.7 + 0.12 * Math.max(0, c.word.length() - n);
         int uc = user.count(c.word);
         if (uc > 0) s += Math.min(1.5, 0.45 * Math.log(1 + uc) / Math.log(2));
@@ -697,11 +698,11 @@ public final class Engine {
             if (correction == null && best != null && user.count(lower) < UserDict.KNOWN) {
                 int ft = dict.freq(lower);
                 boolean dropsAccent = looseKey(lower).equals(looseKey(best.word)) && !accentsKept(lower, best.word);
-                if (ft < 100 && best.cost <= 0.9 && best.freq >= ft + 60 && !dropsAccent) correction = best.word;
+                if (ft < 100 && best.cost <= 1.3 && best.freq >= ft + 60 && !dropsAccent) correction = best.word;
             }
         } else if (morphValid) {
             // Looks like a valid inflected/compound form; correct only to a very close, common word.
-            if (best != null && best.cost <= 0.6 && best.freq >= 80) correction = best.word;
+            if (best != null && ((best.cost <= 0.6 && best.freq >= 80) || (best.cost <= 1.0 && best.freq >= 140))) correction = best.word;
         } else {
             if (best != null && best.cost <= mc) correction = best.word;
             if (hungarian && (best == null || best.cost > 0.7)) {

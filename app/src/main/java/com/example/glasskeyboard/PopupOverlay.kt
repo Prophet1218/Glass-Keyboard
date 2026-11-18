@@ -250,7 +250,7 @@ class PopupOverlay(context: Context) : View(context) {
     private fun liquidVeil(t: GlassTheme): Int = if (t.dark) 0x8C3A3B40.toInt() else 0x99FFFFFF.toInt()
 
     private fun popupTint(t: GlassTheme, mat: Int = popupGlass): Int = when (mat) {
-        0 -> if (t.dark) 0x66595A60 else 0x80FFFFFF.toInt()
+        0 -> if (t.dark) 0x99595A60.toInt() else 0xB3FFFFFF.toInt()
         1 -> if (t.dark) 0xA6505156.toInt() else 0xB8F5F6F9.toInt()
         else -> t.popup
     }
@@ -494,15 +494,18 @@ class PopupOverlay(context: Context) : View(context) {
             if (mat == 0) {
                 // liquid: the bubble itself is a lens over the keys, bending them at its rim
                 backSharp?.let { boxLens.setContent(it, 0f, 0f, 2f) }
-                val rad = b.box.height() / 2f
+                val rad = if (b === popup) b.box.height() / 2f else 12f * dp
+                // the small typing balloon bends less, so the letter stays clean
+                val bend = if (b === popup) 0.8f else 0.35f
                 boxLens.drawRaw(
-                    canvas, b.box, rad, 1f, minOf(t.lensHeight, rad * 0.8f), t.lensAmount * 0.8f,
+                    canvas, b.box, rad, 1f, minOf(t.lensHeight, rad * 0.6f), t.lensAmount * bend,
                     t.lensDispersion, 0f, t.params.rim, t.params.convex,
                     popupTint(t, mat), t.dark, st[3], shadow = false,
                 )
                 // a light veil over the refracted keys keeps the letters readable
-                paint.color = liquidVeil(t)
-                paint.alpha = (Color.alpha(liquidVeil(t)) * st[3]).toInt()
+                val veil = if (b === popup) liquidVeil(t) else (if (t.dark) 0xCC3A3B40.toInt() else 0xD9FFFFFF.toInt())
+                paint.color = veil
+                paint.alpha = (Color.alpha(veil) * st[3]).toInt()
                 canvas.drawRoundRect(b.box, rad, rad, paint)
             }
             t.drawRim(canvas, b.shape, b.bounds, (255 * st[3]).toInt())

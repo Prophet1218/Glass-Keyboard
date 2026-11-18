@@ -27,11 +27,11 @@ truely arguement acheive begining beggining calender cemetary concious enviromen
 finaly foriegn freind gaurd grammer harrass independant knowlege liason libary lisence
 neccessary noticable occurence persue posession prefered publically realy reccomend refered
 relevent religous rember remeber sieze similiar sincerly suprise tatoo threshhold tounge
-truley wether wheather wierdly writting youself thru tho""".split())
+truley wether wheather wierdly writting youself thru tho accomodation accomodations accomodating""".split())
 
 HU_MISSPELLINGS = set("""nemtudom nemtom nemtudok nemtudod nemkell nemvagyok hogyvagy hogyvagytok
 hogyvan mindjártjövök mostmár egyátalán ennyiaz szivesen szívessen elöször
-eggyütt egyenlőre""".split())
+eggyütt egyenlőre kosznom kösznöm koszonom köszönom kőszőnőm""".split())
 
 def deacc(w):
     return ''.join(c for c in unicodedata.normalize('NFD', w) if not unicodedata.combining(c)).replace("'", "")

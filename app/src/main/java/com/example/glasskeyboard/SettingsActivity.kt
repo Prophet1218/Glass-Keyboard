@@ -138,6 +138,7 @@ class SettingsActivity : Activity() {
         val glass = card("Üveghatás")
         glass.addView(choiceRow("Üveg típusa", arrayOf("Folyékony üveg (fénytörés)", "Matt üveg (elmosás, fénytörés nélkül)", "Kikapcsolva (tömör felületek, üveg nélkül)"), Prefs.K_GLASS, 0))
         glass.addView(choiceRow("Üveg árnyalata", arrayOf("Rendszer szerint (világos / sötét)", "Világos", "Sötét", "Átlátszó"), Prefs.K_THEME, 0))
+        glass.addView(choiceRow("Eszköztár gombjainak háttere", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_TOOL_GLASS, 0))
         glass.addView(choiceRow("Betűbuborék anyaga (gépeléskor)", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_PREVIEW_GLASS, 2))
         glass.addView(choiceRow("Hosszú nyomás menü (ékezetválasztó) anyaga", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_POPUP_GLASS, 0))
         glass.addView(choiceRow("Kijelölő kapszula (javaslat és ékezetválasztó)", arrayOf("Liquid glass (fénytörés)", "Frosted glass (matt, elmosott)"), Prefs.K_LENS_STYLE, 0))
@@ -179,6 +180,24 @@ class SettingsActivity : Activity() {
         look.addView(choiceRow("Rezgés", arrayOf("Ki", "Enyhe", "Erős"), Prefs.K_HAPTICS, 1))
         look.addView(switchRow("Hang", "Kattanó hang gépeléskor", Prefs.K_SOUND, false))
         look.addView(switchRow("Mikrofon gomb", "Hangalapú bevitel (pl. Google hangbevitel) a billentyűzet alatt", Prefs.K_MIC, true))
+
+        // ---- GIF
+        val gif = card("GIF")
+        gif.addView(hint("A Tenor GIF szolgáltatást a Google 2026. június 30-án lezárta a külső alkalmazások elől, ezért a billentyűzet a KLIPY-t használja (ugyanolyan GIF-kereső). Ehhez egy ingyenes API kulcs kell: regisztrálj a partner.klipy.com oldalon, hozz létre egy platformot, és másold ide a kulcsot."))
+        val keyField = EditText(this)
+        keyField.hint = "KLIPY API kulcs"
+        keyField.setText(prefs.klipyKey)
+        keyField.isSingleLine = true
+        keyField.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        keyField.setTextColor(textColor)
+        keyField.setHintTextColor(softColor)
+        keyField.background = rounded(if (dark) 0x22FFFFFF else 0x99FFFFFF.toInt(), 14f)
+        keyField.setPadding((14 * dp).toInt(), (12 * dp).toInt(), (14 * dp).toInt(), (12 * dp).toInt())
+        gif.addView(keyField, lp(top = 8))
+        gif.addView(button("Kulcs mentése") {
+            prefs.sp.edit().putString(Prefs.K_KLIPY, keyField.text.toString().trim()).apply()
+            android.widget.Toast.makeText(this, "Elmentve", android.widget.Toast.LENGTH_SHORT).show()
+        })
 
         // ---- learned words
         val words = card("Tanult szavak")

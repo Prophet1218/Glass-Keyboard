@@ -213,14 +213,18 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private val saveRunnable = Runnable { worker.execute { saveDicts() } }
     private val restoreSpaceLabel = Runnable { if (::kb.isInitialized) kb.spaceLabel = "" }
 
+    private val navGuard = NavBarGuard()
     private lateinit var clips: ClipStore
     private lateinit var clipPanel: ClipboardPanel
+    private lateinit var gifPanel: GifPanel
     private var clipListener: android.content.ClipboardManager.OnPrimaryClipChangedListener? = null
 
     override fun onCreate() {
         // own window theme: draws its own system-bar backgrounds, no translucent/black nav scrim
         setTheme(R.style.ImeTheme)
         super.onCreate()
+        // edge to edge on every version: the sheet itself runs under the navigation bar
+        if (Build.VERSION.SDK_INT >= 30) window?.window?.setDecorFitsSystemWindows(false)
         prefs = Prefs(this)
         lang = prefs.language
         @Suppress("DEPRECATION")
@@ -301,6 +305,9 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         }, { showKeys() })
         clipPanel.visibility = View.GONE
         area.addView(clipPanel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        gifPanel = GifPanel(this, prefs, { sendGif(it) }, { showKeys() })
+        gifPanel.visibility = View.GONE
+        area.addView(gifPanel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bar.onTool = { onTool(it) }
         val panel = LinearLayout(this)
         panel.orientation = LinearLayout.VERTICAL
@@ -339,6 +346,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         bar.theme = t
         emoji.theme = t
         clipPanel.theme = t
+        gifPanel.theme = t
         overlay.theme = t
         styleNavBar(t)
     }
@@ -352,9 +360,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         // same colour as the bottom of the glass sheet
         @Suppress("DEPRECATION")
         w.navigationBarColor = t.panelBottom or 0xFF000000.toInt()
-        // The window background is transparent (so the sheet keeps its rounded corners) except
-        // below the sheet, where the gesture bar sits: that strip gets the sheet's bottom colour.
-        root?.let { r -> w.setBackgroundDrawable(BelowSheetFill(r, t.panelBottom or 0xFF000000.toInt())) }
+        // transparent window: the rounded sheet and the app behind it decide what is seen
+        w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        // the system's keyboard bar (black by default) gets the sheet's bottom colour
+        navGuard.attach(w.decorView, t.panelBottom or 0xFF000000.toInt())
         // Android 15+: hide the system-drawn IME navigation bar (its black background); the
         // keyboard paints that area itself.
         if (Build.VERSION.SDK_INT >= 35) try {
@@ -473,6 +482,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         bar.animations = prefs.animations
         bar.style = prefs.suggAnim
         bar.toolbarEnabled = prefs.toolbar
+        bar.toolGlass = prefs.toolGlass
         kb.pressStyle = prefs.pressAnim
         Anim.speed = prefs.animSpeed / 100f
         kb.locale = engine().locale
@@ -555,12 +565,84 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private fun letterRows() = Layouts.letters(hu, prefs.accentRow, field, prefs.numberRow, prefs.periodKey).rows.size
 
     private fun onTool(id: Int) {
+        // a tool whose panel is open switches back to the keys (like Gboard)
+        if (id == bar.activeTool) {
+            showKeys()
+            return
+        }
         when (id) {
             CandidateBar.TOOL_EMOJI -> onEmoji()
+            CandidateBar.TOOL_GIF -> showGifs()
             CandidateBar.TOOL_CLIPBOARD -> showClipboard()
-            CandidateBar.TOOL_LANGUAGE -> onGlobe()
             CandidateBar.TOOL_HIDE -> requestHideSelf(0)
             else -> startActivity(android.content.Intent(this, SettingsActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    private fun hidePanels() {
+        emoji.visibility = View.GONE
+        clipPanel.visibility = View.GONE
+        if (gifPanel.visibility == View.VISIBLE) gifPanel.close()
+        gifPanel.visibility = View.GONE
+    }
+
+    private fun fadeIn(v: View) {
+        if (!prefs.animations) return
+        v.alpha = 0f
+        v.translationY = 14 * resources.displayMetrics.density
+        v.animate().alpha(1f).translationY(0f).setDuration(Anim.ms(240f).toLong()).start()
+    }
+
+    private fun showGifs() {
+        val word = extractWord(textBefore())
+        gifPanel.fixedHeight = if (kb.visibility == View.VISIBLE) kb.height else maxOf(kb.height, emoji.height, clipPanel.height)
+        gifPanel.hungarian = hu
+        hidePanels()
+        kb.visibility = View.GONE
+        gifPanel.visibility = View.VISIBLE
+        gifPanel.open(word)
+        gifPanel.requestLayout()
+        bar.activeTool = CandidateBar.TOOL_GIF
+        fadeIn(gifPanel)
+    }
+
+    /** Sends a GIF as a real image where the app accepts one, otherwise as a link. */
+    private fun sendGif(item: GifItem) {
+        val ic = currentInputConnection ?: return
+        val mimes = if (Build.VERSION.SDK_INT >= 25) currentInputEditorInfo?.contentMimeTypes else null
+        val accepts = mimes?.any { android.content.ClipDescription.compareMimeTypes("image/gif", it) } == true
+        if (!accepts || Build.VERSION.SDK_INT < 25) {
+            ic.commitText(item.full + " ", 1)
+            return
+        }
+        Toast.makeText(this, if (hu) "GIF küldése…" else "Sending GIF…", Toast.LENGTH_SHORT).show()
+        worker.execute {
+            val name = "gif_" + item.id.filter { it.isLetterOrDigit() }.take(40).ifEmpty { "x" } + ".gif"
+            val ok = try {
+                val bytes = GifApi.download(item.full)
+                java.io.File(GifProvider.dir(this), name).writeBytes(bytes)
+                true
+            } catch (_: Exception) {
+                false
+            }
+            main.post {
+                val conn = currentInputConnection ?: return@post
+                if (!ok) {
+                    conn.commitText(item.full + " ", 1)
+                    return@post
+                }
+                val info = android.view.inputmethod.InputContentInfo(
+                    GifProvider.uriFor(name),
+                    android.content.ClipDescription(item.title.ifEmpty { "GIF" }, arrayOf("image/gif")),
+                    android.net.Uri.parse(item.page),
+                )
+                val sent = try {
+                    conn.commitContent(info, android.view.inputmethod.InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION, null)
+                } catch (_: Exception) {
+                    false
+                }
+                if (!sent) conn.commitText(item.full + " ", 1)
+            }
         }
     }
 
@@ -569,21 +651,18 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         clipPanel.fixedHeight = kb.height
         clipPanel.hungarian = hu
         clipPanel.refresh()
+        hidePanels()
         kb.visibility = View.GONE
-        emoji.visibility = View.GONE
         clipPanel.visibility = View.VISIBLE
         clipPanel.requestLayout()
-        if (prefs.animations) {
-            clipPanel.alpha = 0f
-            clipPanel.translationY = 14 * resources.displayMetrics.density
-            clipPanel.animate().alpha(1f).translationY(0f).setDuration(Anim.ms(240f).toLong()).start()
-        }
+        bar.activeTool = CandidateBar.TOOL_CLIPBOARD
+        fadeIn(clipPanel)
     }
 
     private fun showKeys() {
-        val wasEmoji = emoji.visibility == View.VISIBLE || clipPanel.visibility == View.VISIBLE
-        emoji.visibility = View.GONE
-        clipPanel.visibility = View.GONE
+        val wasEmoji = emoji.visibility == View.VISIBLE || clipPanel.visibility == View.VISIBLE || gifPanel.visibility == View.VISIBLE
+        hidePanels()
+        bar.activeTool = -1
         kb.visibility = View.VISIBLE
         if (wasEmoji && prefs.animations) {
             kb.alpha = 0f
@@ -972,7 +1051,9 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     override fun onEmoji() {
-        emoji.fixedHeight = kb.height
+        if (kb.height > 0) emoji.fixedHeight = kb.height
+        hidePanels()
+        bar.activeTool = CandidateBar.TOOL_EMOJI
         emoji.hungarian = hu
         emoji.refresh()
         kb.visibility = View.GONE
@@ -1029,8 +1110,18 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     /** Which recognizer to use: Google's first (best Hungarian support), then the others. */
+    /** Marker for the phone's on-device (offline) recognizer, Android 12+. */
+    private val onDevice = android.content.ComponentName("ondevice", "ondevice")
+
     private fun recognizers(): List<android.content.ComponentName?> {
         val out = ArrayList<android.content.ComponentName?>()
+        // offline recognizer first: no app binding, no network (as WM Keyboard does)
+        if (Build.VERSION.SDK_INT >= 31 && try {
+                android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+            } catch (_: Exception) {
+                false
+            }
+        ) out += onDevice
         val services = try {
             packageManager.queryIntentServices(android.content.Intent(android.speech.RecognitionService.SERVICE_INTERFACE), 0)
         } catch (_: Exception) {
@@ -1045,6 +1136,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private var dictationTry = 0
+    private var lastDictationError = 0
     private var dictationLang = true
 
     private fun startDictation() {
@@ -1057,7 +1149,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         recognizer?.destroy()
         val comp = options[dictationTry]
         val rec = try {
-            if (comp != null) android.speech.SpeechRecognizer.createSpeechRecognizer(this, comp)
+            if (comp == onDevice && Build.VERSION.SDK_INT >= 31) android.speech.SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+            else if (comp != null) android.speech.SpeechRecognizer.createSpeechRecognizer(this, comp)
             else android.speech.SpeechRecognizer.createSpeechRecognizer(this)
         } catch (_: Exception) {
             dictationTry++
@@ -1073,6 +1166,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             override fun onEndOfSpeech() = showDictation(if (hu) "Feldolgozás…" else "Processing…")
             override fun onError(error: Int) {
                 if (!listening) return
+                lastDictationError = error
                 if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
                     stopDictation()
                     return

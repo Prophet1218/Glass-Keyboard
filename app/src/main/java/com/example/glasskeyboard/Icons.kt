@@ -154,4 +154,21 @@ object Icons {
         p.lineTo(cx + s * 0.14f, cy + s * 0.28f)
         c.drawPath(p, stroke)
     }
+
+    /** "GIF" in a rounded frame */
+    fun gif(c: Canvas, cx: Float, cy: Float, s: Float, stroke: Paint, fill: Paint) {
+        r.set(cx - s * 0.5f, cy - s * 0.34f, cx + s * 0.5f, cy + s * 0.34f)
+        c.drawRoundRect(r, s * 0.12f, s * 0.12f, stroke)
+        val old = fill.textAlign
+        val oldSize = fill.textSize
+        val oldTf = fill.typeface
+        fill.textAlign = Paint.Align.CENTER
+        fill.textSize = s * 0.4f
+        fill.typeface = android.graphics.Typeface.DEFAULT_BOLD
+        val fm = fill.fontMetrics
+        c.drawText("GIF", cx, cy - (fm.ascent + fm.descent) / 2, fill)
+        fill.textAlign = old
+        fill.textSize = oldSize
+        fill.typeface = oldTf
+    }
 }
