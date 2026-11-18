@@ -49,6 +49,14 @@ class KeyboardRoot(context: Context, val panel: View, val overlay: View) : ViewG
         }
     /** No transparent margin above the sheet: an invisible band would push the app's content. */
     val extraTop = 0
+    /** Height of the navigation bar below the sheet when the keyboard draws behind it. */
+    var bottomInset = 0
+        set(v) {
+            if (field != v) {
+                field = v
+                requestLayout()
+            }
+        }
 
     init {
         setWillNotDraw(false)
@@ -59,14 +67,14 @@ class KeyboardRoot(context: Context, val panel: View, val overlay: View) : ViewG
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         panel.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
-        val total = panel.measuredHeight + extraTop
+        val total = panel.measuredHeight + extraTop + bottomInset
         overlay.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(total, MeasureSpec.EXACTLY))
         setMeasuredDimension(w, total)
     }
 
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         val h = b - t
-        panel.layout(0, h - panel.measuredHeight, r - l, h)
+        panel.layout(0, h - bottomInset - panel.measuredHeight, r - l, h - bottomInset)
         overlay.layout(0, 0, r - l, h)
     }
 
@@ -244,6 +252,19 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         panel.addView(area, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val r = KeyboardRoot(this, panel, overlay)
         root = r
+        // draw the glass sheet behind the navigation bar too (no black band under the keys)
+        if (Build.VERSION.SDK_INT >= 30) {
+            window?.window?.let { w ->
+                w.setDecorFitsSystemWindows(false)
+                @Suppress("DEPRECATION")
+                w.navigationBarColor = android.graphics.Color.TRANSPARENT
+                w.isNavigationBarContrastEnforced = false
+            }
+            r.setOnApplyWindowInsetsListener { _, insets ->
+                r.bottomInset = insets.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom
+                insets
+            }
+        }
         applyTheme()
         return r
     }
@@ -262,6 +283,11 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     private fun styleNavBar(t: GlassTheme) {
         val w = window?.window ?: return
+        if (Build.VERSION.SDK_INT >= 30) {
+            @Suppress("DEPRECATION")
+            w.navigationBarColor = android.graphics.Color.TRANSPARENT
+            w.isNavigationBarContrastEnforced = false
+        }
         // see-through sheet: blur whatever the app shows behind the keyboard (Android 12+)
         if (Build.VERSION.SDK_INT >= 31) try {
             w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
@@ -269,8 +295,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             w.setBackgroundBlurRadius(blur)
         } catch (_: Exception) {
         }
-        @Suppress("DEPRECATION")
-        w.navigationBarColor = t.panelBottom
+        if (Build.VERSION.SDK_INT < 30) {
+            @Suppress("DEPRECATION")
+            w.navigationBarColor = t.panelBottom
+        }
         if (Build.VERSION.SDK_INT >= 30) {
             w.insetsController?.setSystemBarsAppearance(
                 if (t.dark) 0 else WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,

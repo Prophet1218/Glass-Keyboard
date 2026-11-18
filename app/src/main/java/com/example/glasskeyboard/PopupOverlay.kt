@@ -462,11 +462,11 @@ class PopupOverlay(context: Context) : View(context) {
                 val sy = grow * (1f - (kotlin.math.abs(vel) * 0.12f).coerceAtMost(0.15f))
                 val cx = lensX + itemW / 2f
                 val cy = popup.box.centerY()
-                val hw = (itemW / 2f + 2f * dp) * sx
+                val hw = (itemW / 2f + 5f * dp) * sx
                 val hh = (popup.box.height() / 2f - 5f * dp) * sy
                 lensRect.set(cx - hw, cy - hh, cx + hw, cy + hh)
                 lens.draw(
-                    canvas, lensRect, hh, 1.06f, t,
+                    canvas, lensRect, hh, 1.08f, t,
                     if (t.solid) t.accent else if (t.dark) 0x1AFFFFFF else 0x2EFFFFFF, st[3],
                 )
                 if (t.solid) popupItem()?.let { sel ->

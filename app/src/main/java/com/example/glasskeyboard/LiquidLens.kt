@@ -63,10 +63,24 @@ class LiquidLens(private val dp: Float) {
      * @param tint glass body colour (ARGB; alpha = how milky the glass is)
      */
     fun draw(c: Canvas, r: RectF, radius: Float, mag: Float, t: GlassTheme, tint: Int, alpha: Float = 1f, shadow: Boolean = true) {
+        // The settings are tuned for big glass (like the browser's search bar); on these small
+        // capsules the rim band and its bend are scaled down so text under the glass stays clean.
+        val small = minOf(r.width(), r.height()) / 2f
+        val band = minOf(t.lensHeight, small * 0.42f)
+        val amount = if (t.frosted) 0f else t.lensAmount * (band / maxOf(t.lensHeight, 1f)) * 0.45f
+        drawRaw(
+            c, r, radius, mag, band, amount, t.lensDispersion, t.lensBlur, t.params.rim, t.params.convex,
+            tint, t.dark, alpha, shadow, t.solid,
+        )
+    }
+
+    /** Lens with explicit parameters (also used by the liquid slider and toggle). */
+    fun drawRaw(
+        c: Canvas, r: RectF, radius: Float, mag: Float, height: Float, amount: Float,
+        dispersion: Float, blur: Float, rimOn: Boolean, convex: Boolean,
+        tint: Int, dark: Boolean, alpha: Float = 1f, shadow: Boolean = true, solid: Boolean = false,
+    ) {
         if (alpha <= 0f) return
-        val dark = t.dark
-        val height = t.lensHeight
-        val amount = if (t.frosted) 0f else t.lensAmount
         val rad = minOf(radius, r.height() / 2f, r.width() / 2f)
         if (shadow) {
             c.save()
@@ -74,14 +88,14 @@ class LiquidLens(private val dp: Float) {
             path.addRoundRect(r, rad, rad, Path.Direction.CW)
             c.clipOutPath(path)
             for (i in 1..3) {
-                shadowPaint.color = Color.argb(((if (dark) 34 else 14) * alpha).toInt(), 0, 0, 0)
+                shadowPaint.color = Color.argb(((if (dark) 18 else 9) * alpha).toInt(), 0, 0, 0)
                 val g = i * 1.3f * dp
                 tmp.set(r.left - g * 0.4f, r.top + g * 0.3f, r.right + g * 0.4f, r.bottom + g)
                 c.drawRoundRect(tmp, rad + g, rad + g, shadowPaint)
             }
             c.restore()
         }
-        if (t.solid) {
+        if (solid) {
             // glass switched off: a plain capsule
             fallback.shader = null
             fallback.color = tint
@@ -98,12 +112,12 @@ class LiquidLens(private val dp: Float) {
             sh.setFloatUniform("halfSize", r.width() / 2f, r.height() / 2f)
             sh.setFloatUniform("radius", rad)
             sh.setFloatUniform("mag", mag)
-            sh.setFloatUniform("refrHeight", minOf(height, rad, r.width() / 2f))
+            sh.setFloatUniform("refrHeight", maxOf(0.5f, minOf(height, rad, r.width() / 2f)))
             sh.setFloatUniform("refrAmount", amount)
-            sh.setFloatUniform("dispersion", t.lensDispersion)
-            sh.setFloatUniform("blur", t.lensBlur)
-            sh.setFloatUniform("rimOn", if (t.params.rim) 1f else 0f)
-            sh.setFloatUniform("convex", if (t.params.convex) 1f else 0f)
+            sh.setFloatUniform("dispersion", dispersion)
+            sh.setFloatUniform("blur", blur)
+            sh.setFloatUniform("rimOn", if (rimOn) 1f else 0f)
+            sh.setFloatUniform("convex", if (convex) 1f else 0f)
             val a = Color.alpha(tint) / 255f
             sh.setFloatUniform("tint", Color.red(tint) / 255f * a, Color.green(tint) / 255f * a, Color.blue(tint) / 255f * a, a)
             sh.setFloatUniform("light", if (dark) 0f else 1f)
@@ -134,7 +148,7 @@ class LiquidLens(private val dp: Float) {
         fallback.alpha = (Color.alpha(tint) * alpha).toInt()
         c.drawRect(r, fallback)
         c.restore()
-        if (!t.params.rim) return
+        if (!rimOn) return
         rimPaint.strokeWidth = 1.2f * dp
         rimPaint.shader = LinearGradient(0f, r.top, 0f, r.bottom, intArrayOf(0xE6FFFFFF.toInt(), 0x14FFFFFF, 0x66FFFFFF), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         rimPaint.alpha = (255 * alpha).toInt()

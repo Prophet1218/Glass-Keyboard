@@ -20,8 +20,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.SeekBar
-import android.widget.Switch
 import android.widget.TextView
 
 /** Setup steps, a test field and all settings — built in code, in the same glass style. */
@@ -146,6 +144,7 @@ class SettingsActivity : Activity() {
         glass.addView(seekRow("Fénytörés eltolása", Prefs.K_REFR_OFF, 20, 120, 50, ""))
         glass.addView(seekRow("Színszóródás", Prefs.K_DISP, 0, 100, 0, ""))
         glass.addView(seekRow("Üveg sötétítése", Prefs.K_GLASS_DARK, 0, 80, 0, ""))
+        glass.addView(seekRow("Gombok sötétítése", Prefs.K_KEY_DARK, 0, 80, 0, ""))
         glass.addView(switchRow("Körív az üvegen", "Vékony fényív az üvegfelületek (gombok, lap, kijelölő) szélén.", Prefs.K_RIM, true))
         glass.addView(switchRow("Domború (3D) üveg", "Az üvegfelületek domborúnak, vastagnak látszanak: fénycsillanás a peremen, erősebb fénytörés a széleken.", Prefs.K_CONVEX, false))
         glass.addView(actionRow("Alapértelmezett üvegbeállítások visszaállítása", "Az üveg típusa, árnyalata, színe, átlátszósága, az elmosás, a fénytörés és a színszóródás visszaáll az eredeti értékre.") {
@@ -306,14 +305,12 @@ class SettingsActivity : Activity() {
     private fun switchRow(title: String, sub: String?, key: String, def: Boolean, onChange: ((Boolean) -> Unit)? = null): View {
         val r = row()
         r.addView(labels(title, sub))
-        val sw = Switch(this)
-        sw.isChecked = prefs.sp.getBoolean(key, def)
-        sw.setOnCheckedChangeListener { _, on ->
+        val sw = LiquidToggle(this, prefs.sp.getBoolean(key, def), dark) { on ->
             prefs.sp.edit().putBoolean(key, on).apply()
             onChange?.invoke(on)
         }
         r.addView(sw)
-        r.setOnClickListener { sw.toggle() }
+        r.setOnClickListener { sw.toggle(); sw.postInvalidateOnAnimation() }
         return r
     }
 
@@ -338,20 +335,11 @@ class SettingsActivity : Activity() {
         box.setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
         val label = text("$title: ${prefs.sp.getInt(key, def)}$suffix", 16f, textColor)
         box.addView(label)
-        val sb = SeekBar(this)
-        sb.max = max - min
-        sb.progress = prefs.sp.getInt(key, def) - min
-        sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val v = min + progress
-                label.text = "$title: $v$suffix"
-                if (fromUser) prefs.sp.edit().putInt(key, v).apply()
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-        box.addView(sb, lp(top = 4))
+        val sb = LiquidSlider(this, min, max, prefs.sp.getInt(key, def), dark) { v ->
+            label.text = "$title: $v$suffix"
+            prefs.sp.edit().putInt(key, v).apply()
+        }
+        box.addView(sb, lp(top = 2))
         return box
     }
 
@@ -365,22 +353,10 @@ class SettingsActivity : Activity() {
         val swatch = View(this)
         fun col(h: Int) = Color.HSVToColor(floatArrayOf(h.toFloat(), 0.6f, 1f))
         swatch.background = rounded(col(prefs.sp.getInt(key, def)), 8f)
-        val sb = SeekBar(this)
-        sb.max = 360
-        sb.progress = prefs.sp.getInt(key, def)
-        val rainbow = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, IntArray(7) { col(it * 60) })
-        rainbow.cornerRadius = 4 * dp
-        rainbow.setSize(1, (8 * dp).toInt())
-        sb.progressDrawable = rainbow
-        sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                (swatch.background as? GradientDrawable)?.setColor(col(progress))
-                if (fromUser) prefs.sp.edit().putInt(key, progress).apply()
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
+        val sb = LiquidSlider(this, 0, 360, prefs.sp.getInt(key, def), dark, IntArray(7) { col(it * 60) }) { v ->
+            (swatch.background as? GradientDrawable)?.setColor(col(v))
+            prefs.sp.edit().putInt(key, v).apply()
+        }
         val line = LinearLayout(this)
         line.orientation = LinearLayout.HORIZONTAL
         line.gravity = Gravity.CENTER_VERTICAL

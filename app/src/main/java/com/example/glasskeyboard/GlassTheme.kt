@@ -86,7 +86,7 @@ class GlassTheme(
             }
         }
         panelTop = fx(panelTop); panelBottom = fx(panelBottom)
-        key = fx(key); keySpecial = fx(keySpecial); keyPressed = fx(keyPressed); keySpecialPressed = fx(keySpecialPressed)
+        key = kfx(fx(key)); keySpecial = kfx(fx(keySpecial)); keyPressed = kfx(fx(keyPressed)); keySpecialPressed = kfx(fx(keySpecialPressed))
         popup = fx(popup)
         panelTop = withAlpha(panelTop, panelAlpha)
         panelBottom = withAlpha(panelBottom, panelAlpha)
@@ -95,6 +95,9 @@ class GlassTheme(
         keyPressed = withAlpha(keyPressed, keyAlpha)
         keySpecialPressed = withAlpha(keySpecialPressed, keyAlpha)
     }
+
+    /** Extra darkening of the keys only. */
+    private fun kfx(c: Int): Int = if (params.keyDarken > 0) mixRgb(c, Color.BLACK, params.keyDarken / 100f) else c
 
     /** Colour tint (hue + strength) and darkening of the glass, alpha kept. */
     private fun fx(c: Int): Int {

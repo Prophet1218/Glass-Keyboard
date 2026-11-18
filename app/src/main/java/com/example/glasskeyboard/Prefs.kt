@@ -18,6 +18,8 @@ data class GlassParams(
     val dispersion: Int = 0,
     /** 0..80 % */
     val darken: Int = 0,
+    /** extra darkening of the keys only, 0..80 % */
+    val keyDarken: Int = 0,
     val rim: Boolean = true,
     val convex: Boolean = false,
 )
@@ -82,13 +84,14 @@ class Prefs(context: Context) {
         refrOffset = sp.getInt(K_REFR_OFF, 50),
         dispersion = sp.getInt(K_DISP, 0),
         darken = sp.getInt(K_GLASS_DARK, 0),
+        keyDarken = sp.getInt(K_KEY_DARK, 0),
         rim = b(K_RIM, true),
         convex = b(K_CONVEX, false),
     )
 
     fun resetGlass() {
         sp.edit().remove(K_GLASS).remove(K_THEME).remove(K_HUE).remove(K_HUE_STRENGTH).remove(K_BLUR)
-            .remove(K_REFR_H).remove(K_REFR_OFF).remove(K_DISP).remove(K_GLASS_DARK).remove(K_RIM).remove(K_CONVEX)
+            .remove(K_REFR_H).remove(K_REFR_OFF).remove(K_DISP).remove(K_GLASS_DARK).remove(K_KEY_DARK).remove(K_RIM).remove(K_CONVEX)
             .remove(K_PANEL_OPACITY).remove(K_KEY_OPACITY).apply()
     }
 
@@ -148,6 +151,7 @@ class Prefs(context: Context) {
         const val K_REFR_OFF = "glass_refraction_offset"
         const val K_DISP = "glass_dispersion"
         const val K_GLASS_DARK = "glass_dark"
+        const val K_KEY_DARK = "key_dark"
         const val K_RIM = "glass_rim"
         const val K_CONVEX = "glass_convex"
     }
