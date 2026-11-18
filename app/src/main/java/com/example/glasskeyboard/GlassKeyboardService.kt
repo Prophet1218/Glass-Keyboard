@@ -542,6 +542,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         overlay.popupStyle = prefs.popupAnim
         overlay.popupGlass = prefs.popupGlass
         overlay.popupBlur = prefs.popupBlur / 100f
+        bar.glassBlur = prefs.popupBlur / 100f
         overlay.previewGlass = prefs.previewGlass
         overlay.invalidateBackdrop()
         bar.animations = prefs.animations
@@ -1266,11 +1267,17 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             emptyList()
         }
         val names = services.map { android.content.ComponentName(it.serviceInfo.packageName, it.serviceInfo.name) }
+        if (Build.VERSION.SDK_INT >= 33 && try {
+                android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+            } catch (_: Exception) {
+                false
+            }
+        ) out += onDevice
         names.filter { it.packageName == "com.google.android.googlequicksearchbox" }.forEach { out += it }
         names.filter { it.packageName == "com.google.android.tts" && it !in out }.forEach { out += it }
         names.filter { it.packageName.startsWith("com.google") && it !in out }.forEach { out += it }
         out += null // the system default
-        if (Build.VERSION.SDK_INT >= 31 && try {
+        if (Build.VERSION.SDK_INT in 31..32 && try {
                 android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
             } catch (_: Exception) {
                 false
@@ -1281,7 +1288,11 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private var dictationTry = 0
-    private var dictationOptions: List<android.content.ComponentName?> = emptyList()
+    /** (recognizer, feed it the keyboard's own microphone audio) in the order they are tried */
+    private var dictationOptions: List<Pair<android.content.ComponentName?, Boolean>> = emptyList()
+    private val mic = MicPipe()
+    private var maxRms = -100f
+    private var attemptId = 0
     private var dictationLang = true
     private var dictationStartedAt = 0L
     private var heardSpeech = false
@@ -1289,7 +1300,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     private fun startDictation() {
         if (dictationTry == 0 && dictationRetry == 0) {
-            dictationOptions = recognizers()
+            val recs = recognizers()
+            // Android 13+: first with our own recording (a background recognizer may hear only
+            // silence), then the usual way where the recognizer records by itself
+            dictationOptions = (if (Build.VERSION.SDK_INT >= 33) recs.map { it to true } else emptyList()) + recs.map { it to false }
             dictationErrors.clear()
             dictationLang = true
         }
@@ -1298,7 +1312,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             dictationFailed()
             return
         }
-        val comp = options[dictationTry]
+        val comp = options[dictationTry].first
+        val selfAudio = options[dictationTry].second
         // keep the recognizer that worked last time (already connected to its service: no cold
         // start, which is what made the first press fail); a fresh one only after an error
         val reuse = recognizer != null && recognizerComp == comp && recognizerOk && dictationRetry == 0
@@ -1323,6 +1338,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         recognizer = rec
         recognizerComp = comp
         recognizerOk = false
+        val attempt = ++attemptId
+        maxRms = -100f
         heardSpeech = false
         rec.setRecognitionListener(object : android.speech.RecognitionListener {
             // callbacks of a recognizer that was replaced are ignored
@@ -1336,15 +1353,24 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             override fun onBeginningOfSpeech() {
                 heardSpeech = true
             }
-            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onRmsChanged(rmsdB: Float) {
+                if (rmsdB > maxRms) maxRms = rmsdB
+            }
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {
-                if (current()) showDictation(if (hu) "Feldolgozás…" else "Processing…")
+                if (!current()) return
+                mic.stop()
+                showDictation(if (hu) "Feldolgozás…" else "Processing…")
             }
             override fun onError(error: Int) {
                 if (!current()) return
+                mic.stop()
                 val quick = SystemClock.uptimeMillis() - dictationStartedAt < 1500
-                if ((error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && (heardSpeech || !quick)) {
+                // "nothing heard" is believed only if the recognizer really got sound: with our own
+                // recording, loud audio + no result means it ignored our audio (try the next one);
+                // recording by itself, a flat level means it was given silence
+                val gotSound = if (selfAudio) mic.peak < 1500 else maxRms > 1f
+                if ((error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && (heardSpeech || !quick) && gotSound) {
                     // it worked, only nothing (understandable) was said
                     stopDictation()
                     Toast.makeText(this@GlassKeyboardService, if (hu) "Nem hallottam semmit – próbáld újra." else "Didn't catch that.", Toast.LENGTH_SHORT).show()
@@ -1363,12 +1389,13 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                     error == android.speech.SpeechRecognizer.ERROR_CLIENT || error == 11 ||
                     error == android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
                     error == android.speech.SpeechRecognizer.ERROR_SERVER ||
-                    error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                    ((error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && quick)
                 nextRecognizer(sameAgain = transient)
             }
 
             override fun onResults(results: android.os.Bundle?) {
                 if (!current()) return
+                mic.stop()
                 val text = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 stopDictation()
                 if (!text.isNullOrBlank()) insertDictated(text)
@@ -1392,6 +1419,19 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
+        var source: android.os.ParcelFileDescriptor? = null
+        if (selfAudio && Build.VERSION.SDK_INT >= 33) {
+            source = mic.start()
+            if (source == null) {
+                dictationErrors += "${recName(comp)}: " + (if (hu) "saját felvétel nem indult" else "own recording failed")
+                nextRecognizer(sameAgain = false)
+                return
+            }
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE, source)
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, android.media.AudioFormat.ENCODING_PCM_16BIT)
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, MicPipe.SAMPLE_RATE)
+        }
         listening = true
         kb.micActive = true
         dictationStartedAt = SystemClock.uptimeMillis()
@@ -1399,9 +1439,36 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         try {
             rec.startListening(intent)
         } catch (e: Exception) {
+            mic.stop()
             dictationErrors += "${recName(comp)}: ${e.javaClass.simpleName}"
             nextRecognizer(sameAgain = true)
+            return
+        } finally {
+            try {
+                source?.close() // the recognizer has its own copy now
+            } catch (_: Exception) {
+            }
         }
+        // a recognizer that records by itself but only gets silence (background mic block) is
+        // given up on quickly instead of waiting for "nothing heard"
+        main.postDelayed({
+            if (!dictating || attempt != attemptId || heardSpeech || recognizer !== rec) return@postDelayed
+            if (selfAudio) {
+                if (mic.isRunning && mic.peak < 40) {
+                    // even the keyboard's own recording is silent: the microphone is blocked
+                    dictationErrors += if (hu) "a mikrofon csak csendet ad" else "microphone gives only silence"
+                }
+                return@postDelayed
+            }
+            if (maxRms <= 1.0f) {
+                dictationErrors += "${recName(comp)}: " + (if (hu) "csak csendet kap" else "gets only silence")
+                try {
+                    rec.cancel()
+                } catch (_: Exception) {
+                }
+                nextRecognizer(sameAgain = false)
+            }
+        }, 2600)
     }
 
     private var dictationRetry = 0
@@ -1462,6 +1529,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private fun stopDictation() {
         listening = false
         dictating = false
+        mic.stop()
         if (::kb.isInitialized) kb.micActive = false
         if (::bar.isInitialized) bar.clear()
         scheduleRefresh()

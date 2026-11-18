@@ -51,6 +51,13 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
 
     /** background of the toolbar buttons: 0 liquid glass, 1 frosted glass, 2 solid */
     var toolGlass = 0
+    /** glass milkiness of the toolbar buttons (the shared "glass blur" slider): 0 clear … 1 milky */
+    var glassBlur = 0.45f
+
+    private fun scaled(c: Int): Int {
+        val a = (Color.alpha(c) * (0.3f + 1.55f * glassBlur)).toInt().coerceIn(0, 235)
+        return (c and 0x00FFFFFF) or (a shl 24)
+    }
     /** the tool whose panel is open (emoji, GIF, clipboard), highlighted; -1 = none */
     var activeTool = -1
         set(v) {
@@ -87,6 +94,10 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
     private var items: List<Candidate?> = listOf(null, null, null)
     private var old: List<Candidate?> = listOf(null, null, null)
     private val changedAt = LongArray(3)
+    /** animated text size of each slot's word (0 = not drawn yet) */
+    private val slotSize = FloatArray(3)
+    private val slotSizeAt = LongArray(3)
+    private var sizeAnimating = false
     private val pillAt = LongArray(3)
     private val pillFrom = FloatArray(3)
     private var pressed = -1
@@ -217,11 +228,11 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
                 }
                 toolGlass == 1 -> toolLens.drawRaw(
                     c, toolRect, r, 1f, 0.5f, 0f, 0f, 0f, t.params.rim, t.params.convex,
-                    if (t.dark) 0x33FFFFFF else 0x99FFFFFF.toInt(), t.dark, alpha,
+                    scaled(if (t.dark) 0x33FFFFFF else 0x99FFFFFF.toInt()), t.dark, alpha,
                 )
                 else -> toolLens.drawRaw(
                     c, toolRect, r, 1f, minOf(t.lensHeight, r * 0.6f), t.lensAmount * 0.4f, t.lensDispersion, 0f,
-                    t.params.rim, t.params.convex, if (t.dark) 0x1FFFFFFF else 0x4DFFFFFF, t.dark, alpha,
+                    t.params.rim, t.params.convex, scaled(if (t.dark) 0x1FFFFFFF else 0x4DFFFFFF), t.dark, alpha,
                 )
             }
         }
@@ -272,6 +283,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             bmp!!.eraseColor(0)
             target = Canvas(bmp)
         }
+        sizeAnimating = false
         for (i in 0 until 3) {
             val l = left + i * w
             val a = if (!animations || style == 4) 1f else ((now - changedAt[i]) / fadeMs).coerceIn(0f, 1f)
@@ -324,6 +336,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
                 )
             }
         }
+        if (sizeAnimating) again = true
         // thin separators between filled, non-highlighted slots
         t.fill.shader = null
         t.fill.color = t.divider
@@ -347,7 +360,23 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         val avail = w - (if (c.highlight) 40f else 18f) * dp
         val min = 12f * t.sp
         while (paint.measureText(c.shown) > avail && paint.textSize > min) paint.textSize = maxOf(min, paint.textSize * 0.93f)
-        val s = TextUtils.ellipsize(c.shown, paint, avail, TextUtils.TruncateAt.END).toString()
+        if (incoming) {
+            // the word shrinks / grows smoothly as it gets longer / shorter while typing
+            val target = paint.textSize
+            val cur = slotSize[slot]
+            if (cur <= 0f || !animations) slotSize[slot] = target
+            else {
+                val dt = ((now - slotSizeAt[slot]) / 1000f).coerceIn(0f, 0.05f) * Anim.speed
+                val next = cur + (target - cur) * (1f - kotlin.math.exp(-dt * 16f))
+                slotSize[slot] = if (kotlin.math.abs(target - next) < 0.15f) target else next
+                if (slotSize[slot] != target) sizeAnimating = true
+            }
+            slotSizeAt[slot] = now
+            paint.textSize = slotSize[slot]
+        }
+        // while the size is still settling the word may be a little wider: no "…" flash
+        val settling = incoming && sizeAnimating
+        val s = TextUtils.ellipsize(c.shown, paint, if (settling) avail * 1.35f else avail, TextUtils.TruncateAt.END).toString()
         val fm = paint.fontMetrics
         val cx = l + w / 2
         val cy = h / 2 + 1 * dp

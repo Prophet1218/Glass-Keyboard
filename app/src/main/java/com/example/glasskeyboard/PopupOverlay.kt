@@ -267,14 +267,14 @@ class PopupOverlay(context: Context) : View(context) {
         c.save()
         c.clipPath(shape)
         // the menu's blur slider: from clear glass (sharp keys, thin tint) to milky frosted glass
-        val v = if (menu) popupBlur else 0.5f
+        val v = popupBlur
         if (soft != null && mat != 2) {
             val sc = width.toFloat() / soft.width
             backMatrix.setScale(sc, sc)
             bmpPaint.alpha = (255 * alpha).toInt()
             c.drawBitmap(soft, backMatrix, bmpPaint)
             val sharp = backSharp
-            if (menu && mat == 1 && sharp != null && v < 0.6f) {
+            if (mat == 1 && sharp != null && v < 0.6f) {
                 backMatrix.setScale(2f, 2f)
                 bmpPaint.alpha = (255 * alpha * (1f - v / 0.6f)).toInt()
                 c.drawBitmap(sharp, backMatrix, bmpPaint)
@@ -282,7 +282,7 @@ class PopupOverlay(context: Context) : View(context) {
         }
         val tint = popupTint(t, mat)
         paint.color = tint
-        val ta = if (menu && mat != 2) (0.35f + 1.2f * v).coerceAtMost(1.45f) else 1f
+        val ta = if (mat != 2) (0.35f + 1.2f * v).coerceAtMost(1.45f) else 1f
         paint.alpha = (Color.alpha(tint) * ta * alpha).toInt().coerceIn(0, 255)
         c.drawPaint(paint)
         c.restore()
@@ -515,11 +515,16 @@ class PopupOverlay(context: Context) : View(context) {
                 val bend = if (b === popup) 0.8f else 0.35f
                 boxLens.drawRaw(
                     canvas, b.box, rad, 1f, minOf(t.lensHeight, rad * 0.6f), t.lensAmount * bend,
-                    t.lensDispersion, if (b === popup) popupBlur * 7f * dp else 0f, t.params.rim, t.params.convex,
+                    t.lensDispersion, popupBlur * (if (b === popup) 7f else 4f) * dp, t.params.rim, t.params.convex,
                     popupTint(t, mat), t.dark, st[3], shadow = false,
                 )
                 // a light veil over the refracted keys keeps the letters readable
-                val veil = if (b === popup) liquidVeil(t) else (if (t.dark) 0xCC3A3B40.toInt() else 0xD9FFFFFF.toInt())
+                val veil = if (b === popup) liquidVeil(t) else {
+                    // the letter balloon stays more opaque (the letter must be readable) but follows the slider too
+                    val base = if (t.dark) 0xCC3A3B40.toInt() else 0xD9FFFFFF.toInt()
+                    val a = (Color.alpha(base) * (0.55f + 0.9f * popupBlur)).toInt().coerceIn(0, 245)
+                    (base and 0x00FFFFFF) or (a shl 24)
+                }
                 paint.color = veil
                 paint.alpha = (Color.alpha(veil) * st[3]).toInt()
                 canvas.drawRoundRect(b.box, rad, rad, paint)

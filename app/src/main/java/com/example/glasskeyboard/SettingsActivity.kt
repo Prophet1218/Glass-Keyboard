@@ -141,7 +141,7 @@ class SettingsActivity : Activity() {
         glass.addView(choiceRow("Eszköztár gombjainak háttere", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_TOOL_GLASS, 0))
         glass.addView(choiceRow("Betűbuborék anyaga (gépeléskor)", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_PREVIEW_GLASS, 2))
         glass.addView(choiceRow("Hosszú nyomás menü (ékezetválasztó) anyaga", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_POPUP_GLASS, 0))
-        glass.addView(seekRow("Ékezetválasztó üvegének elmosása", Prefs.K_POPUP_BLUR, 0, 100, 45, ""))
+        glass.addView(seekRow("Üveg elmosása (ékezetválasztó, betűbuborék, eszköztár)", Prefs.K_POPUP_BLUR, 0, 100, 45, ""))
         glass.addView(choiceRow("Kijelölő kapszula (javaslat és ékezetválasztó)", arrayOf("Liquid glass (fénytörés)", "Frosted glass (matt, elmosott)"), Prefs.K_LENS_STYLE, 0))
         glass.addView(hueRow("Üveg színe", Prefs.K_HUE, 210))
         glass.addView(seekRow("Szín erőssége (0 = színtelen üveg)", Prefs.K_HUE_STRENGTH, 0, 70, 0, ""))
