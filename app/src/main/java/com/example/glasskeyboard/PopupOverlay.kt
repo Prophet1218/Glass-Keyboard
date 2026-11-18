@@ -50,6 +50,10 @@ class PopupOverlay(context: Context) : View(context) {
     private var itemW = 0f
     private var itemsLeft = 0f
     private var lastPreviewEnd = 0L
+    private var reversed = false
+
+    /** Left edge of the slot that shows item [i]. */
+    private fun slotX(i: Int) = itemsLeft + (if (reversed) popupItems.size - 1 - i else i) * itemW
 
     init {
         isClickable = false
@@ -117,6 +121,10 @@ class PopupOverlay(context: Context) : View(context) {
         val pad = 5f * t.dp
         val w = items.size * itemW + 2 * pad
         var l = b.key.centerX() - itemW / 2 - pad
+        // Near the right edge the picker opens to the left, in reverse order, so the default
+        // choice stays right above the finger (like on iOS).
+        reversed = l + w > width - 3 * t.dp
+        if (reversed) l = b.key.centerX() + itemW / 2 + pad - w
         if (l + w > width - 3 * t.dp) l = width - 3 * t.dp - w
         if (l < 3 * t.dp) l = 3 * t.dp
         val h = b.key.height() * 1.12f
@@ -127,15 +135,15 @@ class PopupOverlay(context: Context) : View(context) {
         b.hideAt = 0
         popupItems = items
         popupSelected = 0
-        selX = itemsLeft
+        selX = slotX(0)
         postInvalidateOnAnimation()
-        return floatArrayOf(itemsLeft - o.x, itemW)
+        return floatArrayOf(itemsLeft - o.x, itemW, if (reversed) 1f else 0f)
     }
 
     fun selectPopup(i: Int) {
         if (i != popupSelected) {
             popupSelected = i
-            if (!animations) selX = itemsLeft + i * itemW
+            if (!animations) selX = slotX(i)
             postInvalidateOnAnimation()
         }
     }
@@ -236,7 +244,7 @@ class PopupOverlay(context: Context) : View(context) {
                 popupItems = emptyList()
             } else {
                 drawBubble(canvas, popup, t, st[0], st[1], popup.key.centerX())
-                val target = itemsLeft + popupSelected * itemW
+                val target = slotX(popupSelected)
                 if (animations) {
                     selX += (target - selX) * 0.42f
                     if (kotlin.math.abs(target - selX) > 0.5f) again = true else selX = target
@@ -246,7 +254,7 @@ class PopupOverlay(context: Context) : View(context) {
                 tmp.set(selX + 1.5f * t.dp, popup.box.top + 5f * t.dp, selX + itemW - 1.5f * t.dp, popup.box.bottom - 5f * t.dp)
                 canvas.drawRoundRect(tmp, 9f * t.dp, 9f * t.dp, paint)
                 for ((i, s) in popupItems.withIndex()) {
-                    val l = itemsLeft + i * itemW
+                    val l = slotX(i)
                     val sel = i == popupSelected
                     textPaint.color = if (sel) 0xFFFFFFFF.toInt() else t.text
                     textPaint.alpha = (255 * st[1]).toInt()

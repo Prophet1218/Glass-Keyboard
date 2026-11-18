@@ -23,7 +23,10 @@ import java.util.Random
  *    refraction glow along the bottom edge — the "Liquid Glass" look;
  *  - frosted (1): milky, matte keys and sheet with a fine grain, gentle highlights.
  */
-class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0) {
+class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpacity: Int = 100, keyOpacity: Int = 100) {
+    /** 0..1 opacity of the keyboard sheet and of the keys (settings). */
+    val panelAlpha = (panelOpacity / 100f).coerceIn(0f, 1f)
+    val keyAlpha = (keyOpacity / 100f).coerceIn(0f, 1f)
     val dp = context.resources.displayMetrics.density
     val sp = dp * context.resources.configuration.fontScale
 
@@ -34,13 +37,13 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0) {
     }
     val liquid = style == 0
 
-    val panelTop: Int
-    val panelBottom: Int
-    val key: Int
-    val keySpecial: Int
-    val keyPressed: Int
-    val keySpecialPressed: Int
-    val popup: Int
+    var panelTop = 0; private set
+    var panelBottom = 0; private set
+    var key = 0; private set
+    var keySpecial = 0; private set
+    var keyPressed = 0; private set
+    var keySpecialPressed = 0; private set
+    var popup = 0; private set
 
     init {
         if (liquid) {
@@ -68,9 +71,15 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0) {
                 popup = 0xFFFFFFFF.toInt()
             }
         }
+        panelTop = withAlpha(panelTop, panelAlpha)
+        panelBottom = withAlpha(panelBottom, panelAlpha)
+        key = withAlpha(key, keyAlpha)
+        keySpecial = withAlpha(keySpecial, keyAlpha)
+        keyPressed = withAlpha(keyPressed, keyAlpha)
+        keySpecialPressed = withAlpha(keySpecialPressed, keyAlpha)
     }
 
-    val panelRim = if (dark) 0x40FFFFFF else 0xE6FFFFFF.toInt()
+    val panelRim = withAlpha(if (dark) 0x40FFFFFF else 0xE6FFFFFF.toInt(), panelAlpha)
     val keyActive = if (dark) 0xFFF2F2F7.toInt() else 0xFFFFFFFF.toInt()
     val text = if (dark) Color.WHITE else Color.BLACK
     val textSoft = if (dark) 0xB3FFFFFF.toInt() else 0x99000000.toInt()
@@ -95,6 +104,7 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0) {
         shader = BitmapShader(grain, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
         alpha = if (dark) 40 else 70
     }
+    private val grainBase = if (dark) 40 else 70
     val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create("sans-serif", Typeface.NORMAL)
@@ -152,10 +162,10 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0) {
         keyPath.reset()
         keyPath.addRoundRect(r, radius, radius, Path.Direction.CW)
         c.clipOutPath(keyPath)
-        shadowPaint.color = if (dark) 0x40000000 else if (liquid) 0x14000000 else 0x1A000000
+        shadowPaint.color = withAlpha(if (dark) 0x40000000 else if (liquid) 0x14000000 else 0x1A000000, keyAlpha)
         tmp.set(r.left - 0.5f * dp, r.top + 1.5f * dp, r.right + 0.5f * dp, r.bottom + 2.2f * dp)
         c.drawRoundRect(tmp, radius + dp, radius + dp, shadowPaint)
-        shadowPaint.color = if (dark) 0x59000000 else if (liquid) 0x26000000 else 0x30000000
+        shadowPaint.color = withAlpha(if (dark) 0x59000000 else if (liquid) 0x26000000 else 0x30000000, keyAlpha)
         tmp.set(r.left, r.top + 0.8f * dp, r.right, r.bottom + 0.9f * dp)
         c.drawRoundRect(tmp, radius, radius, shadowPaint)
         c.restore()
@@ -164,6 +174,8 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0) {
         fill.color = color
         c.drawRoundRect(r, radius, radius, fill)
 
+        overlayPaint.alpha = (255 * keyAlpha).toInt()
+        grainPaint.alpha = (grainBase * keyAlpha).toInt()
         overlayPaint.shader = stretch(sheen, r)
         c.drawRoundRect(r, radius, radius, overlayPaint)
         if (liquid) {
@@ -173,11 +185,14 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0) {
             c.drawRoundRect(r, radius, radius, grainPaint)
         }
         overlayPaint.shader = null
+        overlayPaint.alpha = 255
 
         rimPaint.shader = stretch(rimShader, r)
+        rimPaint.alpha = (255 * keyAlpha).toInt()
         tmp.set(r.left + 0.6f * dp, r.top + 0.6f * dp, r.right - 0.6f * dp, r.bottom - 0.6f * dp)
         c.drawRoundRect(tmp, radius - 0.6f * dp, radius - 0.6f * dp, rimPaint)
         rimPaint.shader = null
+        rimPaint.alpha = 255
     }
 
     /** Glass surface for popups (any outline). */
@@ -214,9 +229,12 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0) {
             m.postTranslate(left, top)
             panelSheen.setLocalMatrix(m)
             overlayPaint.shader = panelSheen
+            overlayPaint.alpha = (255 * panelAlpha).toInt()
             c.drawPath(path, overlayPaint)
             overlayPaint.shader = null
+            overlayPaint.alpha = 255
         } else {
+            grainPaint.alpha = (grainBase * panelAlpha).toInt()
             c.drawPath(path, grainPaint)
         }
         c.save()
@@ -243,6 +261,8 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0) {
             bmp.setPixels(px, 0, n, 0, 0, n, n)
             bmp
         }
+
+        fun withAlpha(c: Int, f: Float): Int = (c and 0x00FFFFFF) or ((Color.alpha(c) * f).toInt().coerceIn(0, 255) shl 24)
 
         fun lerpColor(a: Int, b: Int, t: Float): Int {
             val u = t.coerceIn(0f, 1f)

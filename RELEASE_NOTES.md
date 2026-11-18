@@ -1,10 +1,8 @@
-## Glass Keyboard 0.0.2
+## Glass Keyboard 0.0.3
 
-Újdonságok:
-
-- **Üveg stílus választható:** Liquid glass (áttetsző, csillanó perem, fénytörés-szerű alsó fény) vagy Frosted glass (matt, finom szemcsés dérüveg)
-- **Számsor** bekapcsolható a betűk fölé (1–0)
-- **Pont gomb** bekapcsolható a szóköz mellé; hosszan nyomva , ? ! … : ;
-- **Animációk:** rugalmasan felugró betűbuborék, kinyíló ékezetválasztó csúszó kijelöléssel, finoman elhalványuló gombnyomás, áttűnés az emoji panel, a 123 és a javaslatok váltásakor (kikapcsolható)
-- **Alsó sáv magassága** állítható (földgömb, mikrofon); új, éles földgömb és mikrofon ikonok
-- A szóköz gombon nincs felirat (nyelvváltáskor egy pillanatra kiírja a nyelvet)
+- **Alsó sor újraosztva:** a szóköz pontosan középen van, a return gomb kisebb; bal és jobb oldalon ugyanakkora szélességű gombok (bekapcsolt pont gombbal is)
+- **Átlátszóság:** külön állítható a billentyűzet háttere és a gombok
+- **Javaslatsáv nem ugrál:** a kiemelő buborék helyben marad, csak megjelenéskor/eltűnéskor halványul; a szavak helyben, áttűnéssel cserélődnek
+- **123 / ABC váltás áttűnéssel**, és a 123 oldalon sem nagyobbak a gombok (számsor/ékezetsor mellett sem)
+- **Megnyílási animáció:** választható (lassulva felcsúszó, rugós, áttűnés és nagyítás, egyenletes, nincs), és állítható az időtartama
+- **O betű hosszú nyomása:** a választó fordított sorrendben, balra nyílik, így az alapértelmezett betű az ujjad felett van (a jobb szélhez közeli gomboknál általában is)

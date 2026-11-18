@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.glasskeyboard"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.0.2"
+        versionCode = 3
+        versionName = "0.0.3"
     }
 
     // Fixed signing key kept in the project, so every build (GitHub or Android Studio)

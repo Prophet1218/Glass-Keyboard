@@ -1,7 +1,13 @@
 package com.example.glasskeyboard
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.icu.text.BreakIterator
 import android.inputmethodservice.InputMethodService
 import android.media.AudioManager
@@ -64,7 +70,65 @@ class KeyboardRoot(context: Context, val panel: View, val overlay: View) : ViewG
     }
 
     override fun onDraw(canvas: Canvas) {
-        theme?.drawPanel(canvas, 0f, panel.top.toFloat(), width.toFloat(), height.toFloat())
+        val t = theme ?: return
+        val a = panel.alpha
+        if (a <= 0f) return
+        val sc = panel.scaleX
+        val save = if (a < 1f) canvas.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), (255 * a).toInt()) else canvas.save()
+        if (sc != 1f) canvas.scale(sc, panel.scaleY, width / 2f, height.toFloat())
+        t.drawPanel(canvas, 0f, panel.top + panel.translationY, width.toFloat(), height.toFloat())
+        canvas.restoreToCount(save)
+    }
+
+    private var openAnim: ValueAnimator? = null
+
+    /** Opening animation of the keyboard sheet. */
+    fun playOpen(type: Int, ms: Int) {
+        openAnim?.cancel()
+        resetPanel()
+        if (type == 4 || ms <= 0) return
+        val h = (if (panel.height > 0) panel.height else panel.measuredHeight).toFloat()
+        if (h <= 0f) return
+        panel.pivotX = width / 2f
+        panel.pivotY = h
+        val anim = ValueAnimator.ofFloat(0f, 1f)
+        anim.duration = ms.toLong()
+        anim.interpolator = when (type) {
+            1 -> OvershootInterpolator(1.15f)
+            2 -> DecelerateInterpolator(2f)
+            3 -> AccelerateDecelerateInterpolator()
+            else -> DecelerateInterpolator(2.6f) // fast start, slowing down gradually
+        }
+        anim.addUpdateListener {
+            val f = it.animatedValue as Float
+            if (type == 2) {
+                panel.alpha = f.coerceIn(0f, 1f)
+                val s = 0.92f + 0.08f * f
+                panel.scaleX = s
+                panel.scaleY = s
+                panel.translationY = (1f - f) * h * 0.08f
+            } else {
+                panel.translationY = (1f - f) * h
+            }
+            invalidate()
+        }
+        anim.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                resetPanel()
+            }
+        })
+        openAnim = anim
+        if (type == 2) panel.alpha = 0f else panel.translationY = h
+        invalidate()
+        anim.start()
+    }
+
+    private fun resetPanel() {
+        panel.translationY = 0f
+        panel.alpha = 1f
+        panel.scaleX = 1f
+        panel.scaleY = 1f
+        invalidate()
     }
 }
 
@@ -177,7 +241,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private fun applyTheme() {
-        val t = GlassTheme(this, prefs.theme, prefs.glassStyle)
+        val t = GlassTheme(this, prefs.theme, prefs.glassStyle, prefs.panelOpacity, prefs.keyOpacity)
         theme = t
         if (root == null) return
         root?.theme = t
@@ -207,6 +271,12 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     override fun onEvaluateFullscreenMode() = false
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        val r = root ?: return
+        r.post { r.playOpen(prefs.openAnim, prefs.openMs) }
+    }
 
     override fun onComputeInsets(outInsets: Insets) {
         super.onComputeInsets(outInsets)

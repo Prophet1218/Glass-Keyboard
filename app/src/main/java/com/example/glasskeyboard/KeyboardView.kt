@@ -48,7 +48,10 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
 
     var layout: KbLayout? = null
         set(v) {
-            if (field != null && field !== v) layoutChangedAt = SystemClock.uptimeMillis()
+            if (field != null && field !== v) {
+                layoutChangedAt = SystemClock.uptimeMillis()
+                if (animations) captureSnapshot()
+            }
             field = v
             requestLayout()
             layoutKeys()
@@ -114,6 +117,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         var popupOpen = false
         var popupLeft = 0f
         var popupItemW = 1f
+        var popupReversed = false
         var longPressed = false
         var switchedFrom: LayoutKind? = null
         var cursorAccX = 0f
@@ -130,8 +134,11 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
 
     private fun rowCount() = layout?.rows?.size ?: 4
 
-    /** Height of one row of the current layout. */
-    private fun rh(): Float = maxOf(rowCount(), minRows) * rowHeight / rowCount()
+    /** Height of one row (the same on every layout: keys never grow on the 123 pages). */
+    private fun rh(): Float = rowHeight
+
+    /** Layouts with fewer rows than the letters keep the bottom aligned; the gap goes on top. */
+    private fun rowsTop(): Float = topPad + maxOf(0, minRows - rowCount()) * rowHeight
 
     fun desiredHeight(): Int = (topPad + maxOf(rowCount(), minRows) * rowHeight + stripHeight).toInt()
 
@@ -150,7 +157,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         val unit = (w - 2 * sidePad) / 10f
         val h = rh()
         rowTops.clear()
-        var y = topPad
+        var y = rowsTop()
         for (row in l.rows) {
             rowTops += y
             var x = sidePad + row.pad * unit
@@ -173,14 +180,15 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
     private fun keyAt(x: Float, y: Float): Key? {
         val l = layout ?: return null
         if (l.rows.isEmpty()) return null
-        val bottom = topPad + l.rows.size * rh()
+        val bottom = rowsTop() + l.rows.size * rh()
         if (y >= bottom) {
             if (showGlobe && x < width * 0.25f) return globeKey
             if (showMic && x > width * 0.75f) return micKey
             if (y < bottom + 10 * dp) return nearestInRow(l.rows.last(), x)
             return null
         }
-        var ri = ((y - topPad) / rh()).toInt()
+        if (y < rowsTop() - 6 * dp) return null
+        var ri = ((y - rowsTop()) / rh()).toInt()
         ri = ri.coerceIn(0, l.rows.size - 1)
         return nearestInRow(l.rows[ri], x)
     }
@@ -219,6 +227,26 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
 
     private var labelAlpha = 255
     private var animating = false
+    private var snapshot: android.graphics.Bitmap? = null
+    private var snapshotOn = false
+    private val snapPaint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+    private val switchMs = 210f
+    private val decel = android.view.animation.DecelerateInterpolator(1.6f)
+
+    /** Freezes the current keys into a bitmap, faded out over the new layout (123 ⇄ ABC). */
+    private fun captureSnapshot() {
+        if (width <= 0 || height <= 0 || layout == null) return
+        var b = snapshot
+        if (b == null || b.width != width || b.height != height) {
+            b = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+            snapshot = b
+        }
+        b.eraseColor(0)
+        val c = Canvas(b)
+        labelAlpha = 255
+        for (row in layout!!.rows) for (k in row.keys) drawKey(c, k, 0f, theme)
+        snapshotOn = true
+    }
 
     override fun onDraw(canvas: Canvas) {
         val l = layout ?: return
@@ -228,13 +256,28 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         val pressed = HashSet<Key>()
         for (i in 0 until pointers.size()) pointers.valueAt(i).key?.let { if (!pointers.valueAt(i).consumed || it.type != KeyType.CHAR) pressed += it }
         val since = now - layoutChangedAt
-        labelAlpha = if (!animations || since >= 160) 255 else (255 * since / 160f).toInt()
-        if (labelAlpha < 255) animating = true
+        val sw = if (!animations || since >= switchMs) 1f else decel.getInterpolation(since / switchMs)
+        labelAlpha = (255 * sw).toInt()
+        if (sw < 1f) animating = true
+        if (sw < 1f && snapshotOn) {
+            // the new keys rise slightly into place while the old page fades away
+            canvas.save()
+            canvas.translate(0f, (1f - sw) * 6 * dp)
+        }
         for (row in l.rows) for (k in row.keys) {
             val p = pressProgress(k, k in pressed, now)
             if (p > 0f && p < 1f) animating = true
             if (k in pressed && p < 1f) animating = true
             drawKey(canvas, k, p, t)
+        }
+        if (sw < 1f && snapshotOn) canvas.restore()
+        val snap = snapshot
+        if (snapshotOn && snap != null) {
+            if (sw >= 1f) snapshotOn = false
+            else {
+                snapPaint.alpha = (255 * (1f - sw)).toInt()
+                canvas.drawBitmap(snap, 0f, 0f, snapPaint)
+            }
         }
         if (showGlobe) drawStripIcon(canvas, globeKey, globeIcon, pressProgress(globeKey, globeKey in pressed, now), t)
         if (showMic) drawStripIcon(canvas, micKey, micIcon, pressProgress(micKey, micKey in pressed, now), t)
@@ -291,7 +334,12 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             KeyType.SHIFT -> Icons.shift(c, cx, cy, iconSize, t.icon, t.iconFill, shift > 0, shift == 2)
             KeyType.DELETE -> Icons.backspace(c, cx, cy, iconSize, t.icon)
             KeyType.EMOJI -> Icons.emoji(c, cx, cy, iconSize, t.icon, t.iconFill)
-            KeyType.ENTER -> if (enterLabel.isEmpty()) Icons.enter(c, cx, cy, iconSize, t.icon) else text(c, enterLabel, cx, cy, 16f, t)
+            KeyType.ENTER -> if (enterLabel.isEmpty()) Icons.enter(c, cx, cy, iconSize, t.icon) else {
+                // the return key is narrower now: shrink long labels ("Keresés") to fit
+                t.label.textSize = 16f * t.sp
+                val fit = (r.width() - 10 * dp) / maxOf(1f, t.label.measureText(enterLabel))
+                text(c, enterLabel, cx, cy, 16f * minOf(1f, fit), t)
+            }
             KeyType.SPACE -> if (spaceLabel.isNotEmpty()) {
                 // only shown briefly after switching language
                 t.label.color = t.textSoft
@@ -405,8 +453,9 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         val p = pointers.get(id) ?: return
         val key = p.key
         if (p.popupOpen) {
-            val idx = ((x - p.popupLeft) / p.popupItemW).toInt().coerceIn(0, (key?.popup?.size ?: 1) - 1)
-            overlay.selectPopup(idx)
+            val n = key?.popup?.size ?: 1
+            val vis = ((x - p.popupLeft) / p.popupItemW).toInt().coerceIn(0, n - 1)
+            overlay.selectPopup(if (p.popupReversed) n - 1 - vis else vis)
             return
         }
         if (cursorMode) {
@@ -545,6 +594,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         val g = overlay.showPopup(this, key.rect, items)
         p.popupLeft = g[0]
         p.popupItemW = g[1]
+        p.popupReversed = g.size > 2 && g[2] > 0.5f
         p.popupOpen = true
         actions.feedback(key)
     }

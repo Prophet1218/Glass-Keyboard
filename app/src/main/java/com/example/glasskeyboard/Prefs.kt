@@ -39,6 +39,12 @@ class Prefs(context: Context) {
     val glassStyle get() = sp.getInt(K_GLASS, 0)
     /** height of the strip under the keys (globe, mic) in dp */
     val stripHeight get() = sp.getInt(K_STRIP_HEIGHT, 46)
+    /** opacity of the keyboard background and of the keys, percent */
+    val panelOpacity get() = sp.getInt(K_PANEL_OPACITY, 100)
+    val keyOpacity get() = sp.getInt(K_KEY_OPACITY, 100)
+    /** opening animation: 0 = slide, slowing down; 1 = springy slide; 2 = fade & zoom; 3 = even slide; 4 = none */
+    val openAnim get() = sp.getInt(K_OPEN_ANIM, 0)
+    val openMs get() = sp.getInt(K_OPEN_MS, 320)
 
     /** 0 = off, 1 = light, 2 = strong */
     val haptics get() = sp.getInt(K_HAPTICS, 1)
@@ -76,5 +82,9 @@ class Prefs(context: Context) {
         const val K_ANIM = "animations"
         const val K_GLASS = "glass_style"
         const val K_STRIP_HEIGHT = "strip_height"
+        const val K_PANEL_OPACITY = "panel_opacity"
+        const val K_KEY_OPACITY = "key_opacity"
+        const val K_OPEN_ANIM = "open_anim"
+        const val K_OPEN_MS = "open_ms"
     }
 }

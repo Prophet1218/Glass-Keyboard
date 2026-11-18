@@ -91,21 +91,23 @@ object Layouts {
     private fun row(chars: String, hu: Boolean, pad: Float = 0f) =
         KbRow(chars.split(" ").map { ch(it, hu) }, pad)
 
+    /**
+     * Bottom row. The space bar is always exactly in the middle: the keys on its left and on its
+     * right take the same total width.
+     */
     private fun bottomRow(hu: Boolean, field: FieldKind, toggle: Key, period: Boolean = false): KbRow {
-        val enter = Key(KeyType.ENTER, "", "\n", 2.5f)
+        fun tg(w: Float) = Key(toggle.type, toggle.label, toggle.output, w)
+        fun space(w: Float) = Key(KeyType.SPACE, "", " ", w)
+        fun enter(w: Float) = Key(KeyType.ENTER, "", "\n", w)
+        val periodKey = Key(KeyType.CHAR, ".", ".", 1f, listOf(",", "?", "!", "…", ":", ";"))
         val keys = when (field) {
-            FieldKind.EMAIL -> listOf(
-                toggle, Key(KeyType.SPACE, "", " ", 4.25f), ch("@", hu), dotKey(hu, false), enter,
-            )
-            FieldKind.URL -> listOf(
-                toggle, ch("/", hu), Key(KeyType.SPACE, "", " ", 4.25f), dotKey(hu, true), enter,
-            )
-            FieldKind.TEXT -> if (period) listOf(
-                toggle, Key(KeyType.EMOJI, "", "", 1.25f), Key(KeyType.SPACE, "", " ", 4f),
-                Key(KeyType.CHAR, ".", ".", 1f, listOf(",", "?", "!", "…", ":", ";")), enter,
-            ) else listOf(
-                toggle, Key(KeyType.EMOJI, "", "", 1.25f), Key(KeyType.SPACE, "", " ", 5f), enter,
-            )
+            FieldKind.EMAIL -> listOf(tg(1.25f), Key(KeyType.CHAR, "@", "@", 1.25f), space(5f), dotKey(hu, false), enter(1.5f))
+            FieldKind.URL -> listOf(tg(1.25f), Key(KeyType.CHAR, "/", "/", 1.25f), space(5f), dotKey(hu, true), enter(1.5f))
+            FieldKind.TEXT -> if (period) {
+                listOf(tg(1.25f), Key(KeyType.EMOJI, "", "", 1.25f), space(5f), periodKey, enter(1.5f))
+            } else {
+                listOf(tg(1.1f), Key(KeyType.EMOJI, "", "", 1.1f), space(5.6f), enter(2.2f))
+            }
         }
         return KbRow(keys)
     }
