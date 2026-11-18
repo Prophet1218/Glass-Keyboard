@@ -2,7 +2,9 @@ package com.example.glasskeyboard
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
@@ -12,17 +14,26 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import java.util.Random
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
- * Transparent layer above the keyboard that draws the key preview "balloon" and the long-press
- * accent picker, with spring-like pop-in and soft fade-out animations. It may draw above the
- * keyboard sheet (into the transparent top margin of the input view). It never takes touches.
+ * Transparent layer over the keyboard that draws the key preview balloon, the long-press accent
+ * picker with its draggable liquid-glass lens, and the "chaos" particle burst. It never takes
+ * touches. Everything stays inside the keyboard window (no invisible margin above it, so apps
+ * never get pushed by an empty band).
  */
 class PopupOverlay(context: Context) : View(context) {
     var theme: GlassTheme? = null
     var animations = true
+    /** 0 spring, 1 float up, 2 fade, 3 none */
+    var previewStyle = 0
+    /** 0 spring, 1 unfold sideways, 2 fade */
+    var popupStyle = 0
 
-    /** One bubble (outline, shadow, the key it grows out of). */
+    private val dp = resources.displayMetrics.density
+
     private class Bubble {
         val shape = Path()
         val shadow = Path()
@@ -37,23 +48,25 @@ class PopupOverlay(context: Context) : View(context) {
     private val popup = Bubble()
     private val tmpPath = Path()
     private val tmp = RectF()
+    private val lensRect = RectF()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val pop = OvershootInterpolator(1.6f)
     private val popSoft = OvershootInterpolator(1.1f)
     private val ease = DecelerateInterpolator()
+    private val ease2 = DecelerateInterpolator(2f)
+    private val lens = LiquidLens(dp)
 
     private var previewText: String? = null
     private var popupItems: List<String> = emptyList()
     private var popupSelected = 0
-    private var selX = 0f
+    private var lensX = 0f
+    private var lensTarget = 0f
     private var itemW = 0f
     private var itemsLeft = 0f
     private var lastPreviewEnd = 0L
     private var reversed = false
-
-    /** Left edge of the slot that shows item [i]. */
-    private fun slotX(i: Int) = itemsLeft + (if (reversed) popupItems.size - 1 - i else i) * itemW
+    private var popupContent: Bitmap? = null
 
     init {
         isClickable = false
@@ -78,22 +91,31 @@ class PopupOverlay(context: Context) : View(context) {
 
     private fun now() = SystemClock.uptimeMillis()
 
+    /** Keeps a bubble inside the view: if there is no room above, it slides down over the key. */
+    private fun clampTop(b: Bubble) {
+        val minTop = 2 * dp
+        if (b.box.top < minTop) b.box.offset(0f, minTop - b.box.top)
+    }
+
+    // ------------------------------------------------------------------ preview balloon
+
     fun showPreview(src: View, k: RectF, text: String) {
         val t = theme ?: return
         val o = offsetOf(src)
         val b = preview
         b.key.set(k.left + o.x, k.top + o.y, k.right + o.x, k.bottom + o.y)
-        val extra = 9f * t.dp
+        val extra = 9f * dp
         var l = b.key.left - extra
         var r = b.key.right + extra
-        if (l < 2 * t.dp) {
-            r += 2 * t.dp - l; l = 2 * t.dp
+        if (l < 2 * dp) {
+            r += 2 * dp - l; l = 2 * dp
         }
-        if (r > width - 2 * t.dp) {
-            l -= r - (width - 2 * t.dp); r = width - 2 * t.dp
+        if (r > width - 2 * dp) {
+            l -= r - (width - 2 * dp); r = width - 2 * dp
         }
         val h = b.key.height() * 1.15f
         b.box.set(l, b.key.top - h - b.key.height() * 0.12f, r, b.key.top - b.key.height() * 0.12f)
+        clampTop(b)
         buildShape(b, t)
         val n = now()
         // in quick succession (fast typing) the next balloon starts half-grown: snappy, not jumpy
@@ -107,51 +129,66 @@ class PopupOverlay(context: Context) : View(context) {
     fun hidePreview() {
         if (previewText == null || preview.hideAt != 0L) return
         lastPreviewEnd = now()
-        if (animations) preview.hideAt = now() else previewText = null
+        if (animations && previewStyle != 3) preview.hideAt = now() else previewText = null
         postInvalidateOnAnimation()
     }
 
-    /** Shows the accent picker; returns the left edge of the first item and the item width, in [src] coordinates. */
+    // ------------------------------------------------------------------ long-press picker
+
+    /** Shows the accent picker; returns the left edge of the first slot, the slot width and 1 if reversed (in [src] coordinates). */
     fun showPopup(src: View, k: RectF, items: List<String>): FloatArray {
-        val t = theme ?: return floatArrayOf(k.left, k.width())
+        val t = theme ?: return floatArrayOf(k.left, k.width(), 0f)
         val o = offsetOf(src)
         val b = popup
         b.key.set(k.left + o.x, k.top + o.y, k.right + o.x, k.bottom + o.y)
-        itemW = maxOf(b.key.width(), 30f * t.dp)
-        val pad = 5f * t.dp
+        itemW = maxOf(b.key.width(), 30f * dp)
+        val pad = 5f * dp
         val w = items.size * itemW + 2 * pad
         var l = b.key.centerX() - itemW / 2 - pad
         // Near the right edge the picker opens to the left, in reverse order, so the default
         // choice stays right above the finger (like on iOS).
-        reversed = l + w > width - 3 * t.dp
+        reversed = l + w > width - 3 * dp
         if (reversed) l = b.key.centerX() + itemW / 2 + pad - w
-        if (l + w > width - 3 * t.dp) l = width - 3 * t.dp - w
-        if (l < 3 * t.dp) l = 3 * t.dp
+        if (l + w > width - 3 * dp) l = width - 3 * dp - w
+        if (l < 3 * dp) l = 3 * dp
         val h = b.key.height() * 1.12f
         b.box.set(l, b.key.top - h - b.key.height() * 0.12f, l + w, b.key.top - b.key.height() * 0.12f)
-        itemsLeft = l + pad
+        clampTop(b)
+        itemsLeft = b.box.left + pad
         buildShape(b, t)
         b.shownAt = now()
         b.hideAt = 0
         popupItems = items
         popupSelected = 0
-        selX = slotX(0)
+        lensTarget = slotX(0)
+        lensX = lensTarget
+        renderPopupContent(t)
         postInvalidateOnAnimation()
         return floatArrayOf(itemsLeft - o.x, itemW, if (reversed) 1f else 0f)
     }
 
-    fun selectPopup(i: Int) {
-        if (i != popupSelected) {
-            popupSelected = i
-            if (!animations) selX = slotX(i)
-            postInvalidateOnAnimation()
-        }
+    /** Left edge of the slot that shows item [i]. */
+    private fun slotX(i: Int) = itemsLeft + (if (reversed) popupItems.size - 1 - i else i) * itemW
+
+    /** The finger moved to [x] (in [src] coordinates): the glass lens follows it; returns the selected item. */
+    fun dragPopup(src: View, x: Float): Int {
+        if (popupItems.isEmpty()) return 0
+        val o = offsetOf(src)
+        val n = popupItems.size
+        lensTarget = (x + o.x - itemW / 2).coerceIn(itemsLeft, itemsLeft + (n - 1) * itemW)
+        val vis = ((lensTarget + itemW / 2 - itemsLeft) / itemW).toInt().coerceIn(0, n - 1)
+        popupSelected = if (reversed) n - 1 - vis else vis
+        if (!animations) lensX = lensTarget
+        postInvalidateOnAnimation()
+        return popupSelected
     }
 
     fun popupItem(): String? = popupItems.getOrNull(popupSelected)
 
     fun hidePopup() {
         if (popupItems.isEmpty() || popup.hideAt != 0L) return
+        // on release the lens settles onto the chosen letter while fading
+        lensTarget = slotX(popupSelected)
         if (animations) popup.hideAt = now() else popupItems = emptyList()
         postInvalidateOnAnimation()
     }
@@ -162,59 +199,206 @@ class PopupOverlay(context: Context) : View(context) {
         invalidate()
     }
 
+    /** The picker (bubble + letters) as a bitmap: this is what the glass lens refracts. */
+    private fun renderPopupContent(t: GlassTheme) {
+        val w = (popup.box.width() + 2).toInt().coerceAtLeast(1)
+        val h = (popup.box.height() + 2).toInt().coerceAtLeast(1)
+        var bmp = popupContent
+        if (bmp == null || bmp.width != w || bmp.height != h) {
+            bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            popupContent = bmp
+        }
+        bmp.eraseColor(0)
+        val c = Canvas(bmp)
+        c.translate(-popup.box.left, -popup.box.top)
+        paint.color = t.popup
+        paint.alpha = 255
+        val br = 12f * dp
+        c.drawRoundRect(popup.box, br, br, paint)
+        drawLetters(c, t, 1f)
+        lens.setContent(bmp, popup.box.left, popup.box.top)
+    }
+
+    private fun drawLetters(c: Canvas, t: GlassTheme, alpha: Float) {
+        for ((i, s) in popupItems.withIndex()) {
+            textPaint.color = t.text
+            textPaint.alpha = (255 * alpha).toInt()
+            textPaint.textSize = (if (s.length > 2) 15f else 26f) * t.sp
+            val fm = textPaint.fontMetrics
+            c.drawText(s, slotX(i) + itemW / 2, popup.box.centerY() - (fm.ascent + fm.descent) / 2, textPaint)
+        }
+    }
+
+    // ------------------------------------------------------------------ chaos burst
+
+    private class Particle(
+        var x: Float, var y: Float, var vx: Float, var vy: Float,
+        val size: Float, val color: Int, var rot: Float, val vr: Float, val kind: Int,
+    )
+
+    private val particles = ArrayList<Particle>()
+    private var burstAt = 0L
+    private var lastFrame = 0L
+    private val rnd = Random()
+    private val palette = intArrayOf(
+        0xFF0A84FF.toInt(), 0xFFFF375F.toInt(), 0xFFFFD60A.toInt(), 0xFF30D158.toInt(),
+        0xFF64D2FF.toInt(), 0xFFBF5AF2.toInt(), 0xFFFF9F0A.toInt(), 0xFFFFFFFF.toInt(),
+    )
+
+    /** A wild little explosion of glassy confetti from ([x], [y]) in [src] coordinates. */
+    fun burst(src: View, x: Float, y: Float) {
+        val o = offsetOf(src)
+        val cx = x + o.x
+        val cy = y + o.y
+        repeat(34) {
+            val a = rnd.nextFloat() * Math.PI.toFloat() * 2f
+            val sp = (180 + rnd.nextFloat() * 900) * dp / 3f
+            particles += Particle(
+                cx + (rnd.nextFloat() - 0.5f) * 30 * dp, cy + (rnd.nextFloat() - 0.5f) * 10 * dp,
+                cos(a) * sp, sin(a) * sp - 260 * dp / 3f,
+                (3 + rnd.nextFloat() * 6) * dp, palette[rnd.nextInt(palette.size)],
+                rnd.nextFloat() * 360f, (rnd.nextFloat() - 0.5f) * 900f, rnd.nextInt(3),
+            )
+        }
+        burstAt = now()
+        lastFrame = burstAt
+        postInvalidateOnAnimation()
+    }
+
+    private fun drawParticles(c: Canvas): Boolean {
+        if (particles.isEmpty()) return false
+        val n = now()
+        val dt = ((n - lastFrame) / 1000f).coerceIn(0f, 0.05f)
+        lastFrame = n
+        val life = (n - burstAt) / 750f
+        if (life >= 1f) {
+            particles.clear()
+            return false
+        }
+        val g = 1500 * dp / 3f
+        val a = (1f - life * life)
+        for (p in particles) {
+            p.vy += g * dt
+            p.vx *= 0.985f
+            p.x += p.vx * dt
+            p.y += p.vy * dt
+            p.rot += p.vr * dt
+            paint.color = p.color
+            paint.alpha = (255 * a).toInt()
+            c.save()
+            c.rotate(p.rot, p.x, p.y)
+            when (p.kind) {
+                0 -> c.drawCircle(p.x, p.y, p.size / 2, paint)
+                1 -> {
+                    tmp.set(p.x - p.size / 2, p.y - p.size / 4, p.x + p.size / 2, p.y + p.size / 4)
+                    c.drawRoundRect(tmp, p.size / 6, p.size / 6, paint)
+                }
+                else -> {
+                    // four-point sparkle
+                    tmpPath.reset()
+                    val s = p.size * 0.8f
+                    tmpPath.moveTo(p.x, p.y - s)
+                    tmpPath.quadTo(p.x, p.y, p.x + s, p.y)
+                    tmpPath.quadTo(p.x, p.y, p.x, p.y + s)
+                    tmpPath.quadTo(p.x, p.y, p.x - s, p.y)
+                    tmpPath.quadTo(p.x, p.y, p.x, p.y - s)
+                    c.drawPath(tmpPath, paint)
+                }
+            }
+            // a tiny glass glint on each piece
+            paint.color = Color.WHITE
+            paint.alpha = (110 * a).toInt()
+            c.drawCircle(p.x - p.size * 0.15f, p.y - p.size * 0.15f, p.size * 0.14f, paint)
+            c.restore()
+        }
+        return true
+    }
+
+    // ------------------------------------------------------------------ shapes & drawing
+
     /** Bubble + neck + key, merged into one outline. */
     private fun buildShape(b: Bubble, t: GlassTheme) {
         val shape = b.shape
         val bubble = b.box
         val key = b.key
         shape.reset()
-        val br = 12f * t.dp
+        val br = 12f * dp
         shape.addRoundRect(bubble, br, br, Path.Direction.CW)
         tmpPath.reset()
         tmpPath.addRoundRect(key, t.keyRadius, t.keyRadius, Path.Direction.CW)
         shape.op(tmpPath, Path.Op.UNION)
-        tmpPath.reset()
-        val nl = maxOf(bubble.left, key.left)
-        val nr = minOf(bubble.right, key.right)
         val gap = key.top - bubble.bottom
-        tmpPath.moveTo(bubble.left, bubble.bottom - br)
-        tmpPath.cubicTo(bubble.left, bubble.bottom + gap * 0.4f, nl, key.top - gap * 0.4f, nl, key.top + t.keyRadius)
-        tmpPath.lineTo(nr, key.top + t.keyRadius)
-        tmpPath.cubicTo(nr, key.top - gap * 0.4f, bubble.right, bubble.bottom + gap * 0.4f, bubble.right, bubble.bottom - br)
-        tmpPath.close()
-        shape.op(tmpPath, Path.Op.UNION)
+        if (gap > 0) {
+            tmpPath.reset()
+            val nl = maxOf(bubble.left, key.left)
+            val nr = minOf(bubble.right, key.right)
+            tmpPath.moveTo(bubble.left, bubble.bottom - br)
+            tmpPath.cubicTo(bubble.left, bubble.bottom + gap * 0.4f, nl, key.top - gap * 0.4f, nl, key.top + t.keyRadius)
+            tmpPath.lineTo(nr, key.top + t.keyRadius)
+            tmpPath.cubicTo(nr, key.top - gap * 0.4f, bubble.right, bubble.bottom + gap * 0.4f, bubble.right, bubble.bottom - br)
+            tmpPath.close()
+            shape.op(tmpPath, Path.Op.UNION)
+        }
         b.shadow.set(shape)
-        b.shadow.offset(0f, 2.5f * t.dp)
-        b.bounds.set(bubble.left, bubble.top, bubble.right, key.bottom)
+        b.shadow.offset(0f, 2.5f * dp)
+        b.bounds.set(bubble.left, bubble.top, bubble.right, maxOf(key.bottom, bubble.bottom))
     }
 
-    /** Returns scale and alpha of a bubble now, or null when it has finished hiding. */
-    private fun state(b: Bubble, interp: OvershootInterpolator, appearMs: Float, from: Float): FloatArray? {
+    /** Scale x, scale y, translation y and alpha of a bubble now, or null when it finished hiding. */
+    private fun state(b: Bubble, style: Int, appearMs: Float): FloatArray? {
         val n = now()
-        if (!animations) return floatArrayOf(1f, 1f)
+        if (!animations || style == 3) return floatArrayOf(1f, 1f, 0f, 1f)
         val a = ((n - b.shownAt) / appearMs).coerceIn(0f, 1f)
-        var scale = from + (1f - from) * interp.getInterpolation(a)
-        var alpha = (a * 2.2f).coerceAtMost(1f)
+        var sx: Float
+        var sy: Float
+        var ty = 0f
+        var alpha: Float
+        when (style) {
+            0 -> { // spring
+                val v = 0.5f + 0.5f * (if (b === popup) popSoft else pop).getInterpolation(a)
+                sx = v; sy = v
+                alpha = (a * 2.2f).coerceAtMost(1f)
+            }
+            1 -> if (b === popup) { // unfold sideways
+                val e = ease2.getInterpolation(a)
+                val k = (b.key.width() / b.box.width()).coerceIn(0.05f, 1f)
+                sx = k + (1f - k) * e
+                sy = 1f
+                alpha = (a * 3f).coerceAtMost(1f)
+            } else { // float up
+                val e = ease2.getInterpolation(a)
+                sx = 1f; sy = 1f
+                ty = (1f - e) * b.key.height() * 0.6f
+                alpha = (a * 2f).coerceAtMost(1f)
+            }
+            else -> { // fade
+                sx = 1f; sy = 1f
+                alpha = ease.getInterpolation(a)
+            }
+        }
         if (b.hideAt != 0L) {
             val h = ((n - b.hideAt) / 120f).coerceIn(0f, 1f)
             if (h >= 1f) return null
             val e = ease.getInterpolation(h)
             alpha *= 1f - e
-            scale *= 1f - 0.08f * e
+            if (style == 0) {
+                sx *= 1f - 0.08f * e; sy *= 1f - 0.08f * e
+            }
         }
-        return floatArrayOf(scale, alpha)
+        return floatArrayOf(sx, sy, ty, alpha)
     }
 
-    private fun drawBubble(canvas: Canvas, b: Bubble, t: GlassTheme, scale: Float, alpha: Float, pivotX: Float) {
+    private fun begin(canvas: Canvas, b: Bubble, t: GlassTheme, st: FloatArray, pivotX: Float) {
         canvas.save()
-        canvas.scale(scale, scale, pivotX, b.box.bottom)
+        canvas.translate(0f, st[2])
+        canvas.scale(st[0], st[1], pivotX, b.box.bottom)
         canvas.save()
         canvas.clipOutPath(b.shape)
         paint.color = t.popupShadow
-        paint.alpha = (android.graphics.Color.alpha(t.popupShadow) * alpha).toInt()
+        paint.alpha = (Color.alpha(t.popupShadow) * st[3]).toInt()
         canvas.drawPath(b.shadow, paint)
         canvas.restore()
-        t.drawShape(canvas, b.shape, b.bounds, t.popup, (255 * alpha).toInt())
+        t.drawShape(canvas, b.shape, b.bounds, t.popup, (255 * st[3]).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -223,13 +407,13 @@ class PopupOverlay(context: Context) : View(context) {
 
         val text = previewText
         if (text != null) {
-            val st = state(preview, pop, 120f, 0.5f)
+            val st = state(preview, previewStyle, if (previewStyle == 0) 120f else 110f)
             if (st == null) {
                 previewText = null
             } else {
-                drawBubble(canvas, preview, t, st[0], st[1], preview.key.centerX())
+                begin(canvas, preview, t, st, preview.key.centerX())
                 textPaint.color = t.text
-                textPaint.alpha = (255 * st[1]).toInt()
+                textPaint.alpha = (255 * st[3]).toInt()
                 textPaint.textSize = if (text.length > 2) 22f * t.sp else 34f * t.sp
                 val fm = textPaint.fontMetrics
                 canvas.drawText(text, preview.box.centerX(), preview.box.centerY() - (fm.ascent + fm.descent) / 2, textPaint)
@@ -239,33 +423,28 @@ class PopupOverlay(context: Context) : View(context) {
         }
 
         if (popupItems.isNotEmpty()) {
-            val st = state(popup, popSoft, 200f, 0.6f)
+            val st = state(popup, popupStyle, 210f)
             if (st == null) {
                 popupItems = emptyList()
             } else {
-                drawBubble(canvas, popup, t, st[0], st[1], popup.key.centerX())
-                val target = slotX(popupSelected)
+                begin(canvas, popup, t, st, popup.key.centerX())
+                drawLetters(canvas, t, st[3])
                 if (animations) {
-                    selX += (target - selX) * 0.42f
-                    if (kotlin.math.abs(target - selX) > 0.5f) again = true else selX = target
-                } else selX = target
-                paint.color = t.accent
-                paint.alpha = (255 * st[1]).toInt()
-                tmp.set(selX + 1.5f * t.dp, popup.box.top + 5f * t.dp, selX + itemW - 1.5f * t.dp, popup.box.bottom - 5f * t.dp)
-                canvas.drawRoundRect(tmp, 9f * t.dp, 9f * t.dp, paint)
-                for ((i, s) in popupItems.withIndex()) {
-                    val l = slotX(i)
-                    val sel = i == popupSelected
-                    textPaint.color = if (sel) 0xFFFFFFFF.toInt() else t.text
-                    textPaint.alpha = (255 * st[1]).toInt()
-                    textPaint.textSize = (if (s.length > 2) 15f else 26f) * t.sp
-                    val fm = textPaint.fontMetrics
-                    canvas.drawText(s, l + itemW / 2, popup.box.centerY() - (fm.ascent + fm.descent) / 2, textPaint)
-                }
+                    lensX += (lensTarget - lensX) * 0.38f
+                    if (kotlin.math.abs(lensTarget - lensX) > 0.3f) again = true else lensX = lensTarget
+                } else lensX = lensTarget
+                // the draggable liquid-glass lens over the chosen letter
+                val inset = 3f * dp
+                lensRect.set(lensX - inset, popup.box.top + 3.5f * dp, lensX + itemW + inset, popup.box.bottom - 3.5f * dp)
+                lens.draw(
+                    canvas, lensRect, 12f * dp, 1.28f, 9f * dp,
+                    if (t.dark) 0x26FFFFFF else 0x2EFFFFFF, t.dark, st[3],
+                )
                 canvas.restore()
-                if (animations && (now() - popup.shownAt < 220 || popup.hideAt != 0L)) again = true
+                if (animations && (now() - popup.shownAt < 230 || popup.hideAt != 0L)) again = true
             }
         }
+        if (drawParticles(canvas)) again = true
         if (again) postInvalidateOnAnimation()
     }
 }

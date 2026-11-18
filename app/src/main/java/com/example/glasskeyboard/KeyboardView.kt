@@ -88,6 +88,8 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
     var spaceCursor = true
     var heightScale = 1f
     var animations = true
+    /** key touch effect: 0 lift, 1 press in, 2 glow, 3 none */
+    var pressStyle = 0
     /** height of the strip under the keys (globe, mic), dp */
     var stripDp = 46f
     private var layoutChangedAt = 0L
@@ -118,6 +120,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         var popupLeft = 0f
         var popupItemW = 1f
         var popupReversed = false
+        var popupIndex = 0
         var longPressed = false
         var switchedFrom: LayoutKind? = null
         var cursorAccX = 0f
@@ -225,12 +228,13 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         return q * q
     }
 
+    private val glowRect = RectF()
     private var labelAlpha = 255
     private var animating = false
     private var snapshot: android.graphics.Bitmap? = null
     private var snapshotOn = false
     private val snapPaint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
-    private val switchMs = 210f
+    private val switchMs = 140f
     private val decel = android.view.animation.DecelerateInterpolator(1.6f)
 
     /** Freezes the current keys into a bitmap, faded out over the new layout (123 ⇄ ABC). */
@@ -259,18 +263,13 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         val sw = if (!animations || since >= switchMs) 1f else decel.getInterpolation(since / switchMs)
         labelAlpha = (255 * sw).toInt()
         if (sw < 1f) animating = true
-        if (sw < 1f && snapshotOn) {
-            // the new keys rise slightly into place while the old page fades away
-            canvas.save()
-            canvas.translate(0f, (1f - sw) * 6 * dp)
-        }
+
         for (row in l.rows) for (k in row.keys) {
             val p = pressProgress(k, k in pressed, now)
             if (p > 0f && p < 1f) animating = true
             if (k in pressed && p < 1f) animating = true
             drawKey(canvas, k, p, t)
         }
-        if (sw < 1f && snapshotOn) canvas.restore()
         val snap = snapshot
         if (snapshotOn && snap != null) {
             if (sw >= 1f) snapshotOn = false
@@ -309,10 +308,27 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             k.special -> GlassTheme.lerpColor(t.keySpecial, t.keySpecialPressed, p)
             else -> GlassTheme.lerpColor(t.key, t.keyPressed, p)
         }
-        val scale = if (animations) 1f + 0.04f * p else 1f
+        val style = if (animations) pressStyle else 3
+        val scale = when (style) {
+            0 -> 1f + 0.045f * p
+            1 -> 1f - 0.06f * p
+            else -> 1f
+        }
         c.save()
         if (scale != 1f) c.scale(scale, scale, r.centerX(), r.centerY())
-        t.drawKey(c, r, color)
+        if (style == 2 && p > 0f) {
+            // soft halo of light around the touched key
+            t.fill.shader = null
+            for (i in 3 downTo 1) {
+                t.fill.color = t.accent
+                t.fill.alpha = (26 * p / i).toInt()
+                val g = i * 2.2f * dp
+                glowRect.set(r.left - g, r.top - g, r.right + g, r.bottom + g)
+                c.drawRoundRect(glowRect, t.keyRadius + g, t.keyRadius + g, t.fill)
+            }
+            t.fill.alpha = 255
+        }
+        t.drawKey(c, r, if (style == 2) GlassTheme.lerpColor(color, if (k.special) t.keySpecial else t.key, p * 0.7f) else color)
         if (!cursorMode) drawLabel(c, k, t)
         c.restore()
     }
@@ -453,9 +469,11 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         val p = pointers.get(id) ?: return
         val key = p.key
         if (p.popupOpen) {
-            val n = key?.popup?.size ?: 1
-            val vis = ((x - p.popupLeft) / p.popupItemW).toInt().coerceIn(0, n - 1)
-            overlay.selectPopup(if (p.popupReversed) n - 1 - vis else vis)
+            val idx = overlay.dragPopup(this, x)
+            if (idx != p.popupIndex) {
+                p.popupIndex = idx
+                key?.let { actions.feedback(it) }
+            }
             return
         }
         if (cursorMode) {

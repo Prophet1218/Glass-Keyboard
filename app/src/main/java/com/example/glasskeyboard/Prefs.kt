@@ -45,6 +45,15 @@ class Prefs(context: Context) {
     /** opening animation: 0 = slide, slowing down; 1 = springy slide; 2 = fade & zoom; 3 = even slide; 4 = none */
     val openAnim get() = sp.getInt(K_OPEN_ANIM, 0)
     val openMs get() = sp.getInt(K_OPEN_MS, 320)
+    /** suggestion change: 0 fade, 1 float up, 2 zoom, 3 roll, 4 none */
+    val suggAnim get() = sp.getInt(K_SUGG_ANIM, 0)
+    /** key touch: 0 lift (grow), 1 press in (shrink), 2 glow, 3 none */
+    val pressAnim get() = sp.getInt(K_PRESS_ANIM, 0)
+    /** typing balloon: 0 spring, 1 float up, 2 fade, 3 none */
+    val previewAnim get() = sp.getInt(K_PREVIEW_ANIM, 0)
+    /** long-press picker: 0 spring, 1 unfold sideways, 2 fade */
+    val popupAnim get() = sp.getInt(K_POPUP_ANIM, 0)
+    val chaos get() = b(K_CHAOS, true)
 
     /** 0 = off, 1 = light, 2 = strong */
     val haptics get() = sp.getInt(K_HAPTICS, 1)
@@ -86,5 +95,10 @@ class Prefs(context: Context) {
         const val K_KEY_OPACITY = "key_opacity"
         const val K_OPEN_ANIM = "open_anim"
         const val K_OPEN_MS = "open_ms"
+        const val K_SUGG_ANIM = "sugg_anim"
+        const val K_PRESS_ANIM = "press_anim"
+        const val K_PREVIEW_ANIM = "preview_anim"
+        const val K_POPUP_ANIM = "popup_anim"
+        const val K_CHAOS = "chaos"
     }
 }

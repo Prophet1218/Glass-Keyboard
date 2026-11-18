@@ -47,7 +47,8 @@ class KeyboardRoot(context: Context, val panel: View, val overlay: View) : ViewG
             field = v
             invalidate()
         }
-    val extraTop = (76 * resources.displayMetrics.density).toInt()
+    /** No transparent margin above the sheet: an invisible band would push the app's content. */
+    val extraTop = 0
 
     init {
         setWillNotDraw(false)
@@ -70,27 +71,28 @@ class KeyboardRoot(context: Context, val panel: View, val overlay: View) : ViewG
     }
 
     override fun onDraw(canvas: Canvas) {
-        val t = theme ?: return
-        val a = panel.alpha
-        if (a <= 0f) return
-        val sc = panel.scaleX
-        val save = if (a < 1f) canvas.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), (255 * a).toInt()) else canvas.save()
-        if (sc != 1f) canvas.scale(sc, panel.scaleY, width / 2f, height.toFloat())
-        t.drawPanel(canvas, 0f, panel.top + panel.translationY, width.toFloat(), height.toFloat())
-        canvas.restoreToCount(save)
+        theme?.drawPanel(canvas, 0f, panel.top.toFloat(), width.toFloat(), height.toFloat())
     }
 
     private var openAnim: ValueAnimator? = null
 
-    /** Opening animation of the keyboard sheet. */
+    private fun parts(): List<View> {
+        val g = panel as? ViewGroup ?: return listOf(panel)
+        return List(g.childCount) { g.getChildAt(it) }
+    }
+
+    /**
+     * Opening animation. The system already slides the keyboard window in together with the app,
+     * so the glass sheet itself stays in place; the keys and the suggestion bar animate inside it
+     * (clipped to the sheet) — no empty band in front of the app.
+     */
     fun playOpen(type: Int, ms: Int) {
         openAnim?.cancel()
-        resetPanel()
+        resetParts()
         if (type == 4 || ms <= 0) return
         val h = (if (panel.height > 0) panel.height else panel.measuredHeight).toFloat()
         if (h <= 0f) return
-        panel.pivotX = width / 2f
-        panel.pivotY = h
+        val views = parts()
         val anim = ValueAnimator.ofFloat(0f, 1f)
         anim.duration = ms.toLong()
         anim.interpolator = when (type) {
@@ -99,36 +101,39 @@ class KeyboardRoot(context: Context, val panel: View, val overlay: View) : ViewG
             3 -> AccelerateDecelerateInterpolator()
             else -> DecelerateInterpolator(2.6f) // fast start, slowing down gradually
         }
-        anim.addUpdateListener {
-            val f = it.animatedValue as Float
-            if (type == 2) {
-                panel.alpha = f.coerceIn(0f, 1f)
-                val s = 0.92f + 0.08f * f
-                panel.scaleX = s
-                panel.scaleY = s
-                panel.translationY = (1f - f) * h * 0.08f
-            } else {
-                panel.translationY = (1f - f) * h
+        fun apply(f: Float) {
+            for (v in views) {
+                if (type == 2) {
+                    v.alpha = f.coerceIn(0f, 1f)
+                    val s = 0.94f + 0.06f * f
+                    v.pivotX = v.width / 2f
+                    v.pivotY = v.height.toFloat()
+                    v.scaleX = s
+                    v.scaleY = s
+                } else {
+                    v.translationY = (1f - f) * h * 0.55f
+                    v.alpha = (0.25f + f).coerceIn(0f, 1f)
+                }
             }
-            invalidate()
         }
+        anim.addUpdateListener { apply(it.animatedValue as Float) }
         anim.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
-                resetPanel()
+                resetParts()
             }
         })
         openAnim = anim
-        if (type == 2) panel.alpha = 0f else panel.translationY = h
-        invalidate()
+        apply(0f)
         anim.start()
     }
 
-    private fun resetPanel() {
-        panel.translationY = 0f
-        panel.alpha = 1f
-        panel.scaleX = 1f
-        panel.scaleY = 1f
-        invalidate()
+    private fun resetParts() {
+        for (v in parts()) {
+            v.translationY = 0f
+            v.alpha = 1f
+            v.scaleX = 1f
+            v.scaleY = 1f
+        }
     }
 }
 
@@ -225,6 +230,12 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         overlay = PopupOverlay(this)
         kb = KeyboardView(this, this, overlay)
         bar = CandidateBar(this) { pickCandidate(it) }
+        bar.onTapAt = { x, y ->
+            if (prefs.chaos) {
+                if (prefs.animations) overlay.burst(bar, x, y)
+                chaosBuzz()
+            }
+        }
         emoji = EmojiView(this, this, prefs)
         emoji.visibility = View.GONE
         val area = FrameLayout(this)
@@ -332,7 +343,11 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         kb.stripDp = prefs.stripHeight.toFloat()
         kb.animations = prefs.animations
         overlay.animations = prefs.animations
+        overlay.previewStyle = prefs.previewAnim
+        overlay.popupStyle = prefs.popupAnim
         bar.animations = prefs.animations
+        bar.style = prefs.suggAnim
+        kb.pressStyle = prefs.pressAnim
         kb.locale = engine().locale
         kb.minRows = letterRows()
         kb.spaceLabel = ""
@@ -873,6 +888,21 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     override fun feedbackLight() = feedbackTick()
 
     // ------------------------------------------------------------------ feedback
+
+    /** An irregular, "chaotic" little rattle. */
+    private fun chaosBuzz() {
+        val v = vibrator ?: return
+        if (prefs.haptics == 0) return
+        try {
+            val rnd = java.util.Random()
+            val n = 7
+            val timings = LongArray(n * 2) { if (it % 2 == 0) (8 + rnd.nextInt(22)).toLong() else (6 + rnd.nextInt(16)).toLong() }
+            val amps = IntArray(n * 2) { if (it % 2 == 0) 0 else 40 + rnd.nextInt(200) }
+            if (v.hasAmplitudeControl()) v.vibrate(VibrationEffect.createWaveform(timings, amps, -1))
+            else v.vibrate(VibrationEffect.createWaveform(timings, -1))
+        } catch (_: Exception) {
+        }
+    }
 
     private fun feedbackTick() {
         val v = vibrator ?: return

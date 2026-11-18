@@ -1,8 +1,8 @@
-## Glass Keyboard 0.0.3
+## Glass Keyboard 0.0.4
 
-- **Alsó sor újraosztva:** a szóköz pontosan középen van, a return gomb kisebb; bal és jobb oldalon ugyanakkora szélességű gombok (bekapcsolt pont gombbal is)
-- **Átlátszóság:** külön állítható a billentyűzet háttere és a gombok
-- **Javaslatsáv nem ugrál:** a kiemelő buborék helyben marad, csak megjelenéskor/eltűnéskor halványul; a szavak helyben, áttűnéssel cserélődnek
-- **123 / ABC váltás áttűnéssel**, és a 123 oldalon sem nagyobbak a gombok (számsor/ékezetsor mellett sem)
-- **Megnyílási animáció:** választható (lassulva felcsúszó, rugós, áttűnés és nagyítás, egyenletes, nincs), és állítható az időtartama
-- **O betű hosszú nyomása:** a választó fordított sorrendben, balra nyílik, így az alapértelmezett betű az ujjad felett van (a jobb szélhez közeli gomboknál általában is)
+- **Valódi liquid glass:** a javaslatsáv kiemelő kapszulája és a hosszú nyomás választója is fénytörő üveglencse – nagyít, a peremén megtöri és színekre bontja ami alatta van, fényes felső él, lágy alsó fény
+- **Húzható üveglencse** az ékezetválasztóban: folyamatosan követi az ujjad, betűváltáskor apró rezgés
+- **Kaotikus visszajelzés** javaslatra koppintáskor: színes üvegkonfetti és szikrák, a szó megugrik, rendhagyó rezgés (kikapcsolható)
+- **Animáció-változatok:** javaslatok (áttűnés, felúszás, nagyítás, gördülés, nincs), gombérintés (kiemelkedés, benyomódás, fénylés, nincs), betűbuborék (rugós, felúszás, áttűnés, azonnali), hosszú nyomás (rugós, szétnyílás oldalra, áttűnés)
+- **123 / ABC váltás:** a felugrás kivéve, csak gyors áttűnés
+- **Megnyitás javítva:** nincs többé láthatatlan sáv, ami felnyomta és visszaengedte az alkalmazás tartalmát; a megnyílási animáció most a billentyűzet lapján belül fut
