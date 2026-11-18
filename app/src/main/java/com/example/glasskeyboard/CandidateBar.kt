@@ -27,13 +27,20 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         }
 
     private var items: List<Candidate?> = listOf(null, null, null)
+    private var old: List<Candidate?> = listOf(null, null, null)
+    private var changedAt = 0L
+    var animations = true
     private var pressed = -1
     private val dp = resources.displayMetrics.density
     private val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply { textAlign = android.graphics.Paint.Align.CENTER }
     private val tmp = RectF()
 
     fun set(list: List<Candidate?>) {
-        items = List(3) { list.getOrNull(it) }
+        val n = List(3) { list.getOrNull(it) }
+        if (n == items) return
+        old = items
+        items = n
+        changedAt = android.os.SystemClock.uptimeMillis()
         invalidate()
     }
 
@@ -44,19 +51,35 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
     }
 
     override fun onDraw(canvas: Canvas) {
+        val since = android.os.SystemClock.uptimeMillis() - changedAt
+        val a = if (!animations || since >= 140) 1f else since / 140f
+        if (a < 1f) {
+            drawItems(canvas, old, 1f - a, a)
+            postInvalidateOnAnimation()
+        }
+        drawItems(canvas, items, a, 1f - a)
+    }
+
+    private fun drawItems(canvas: Canvas, items: List<Candidate?>, alpha: Float, shift: Float) {
         val t = theme
         val w = width / 3f
         val h = height.toFloat()
+        val ai = (255 * alpha).toInt()
+        canvas.save()
+        canvas.translate(0f, shift * 4 * dp * (if (items === this.items) 1f else -1f))
         for (i in 0 until 3) {
             val c = items[i] ?: continue
             val l = i * w
             if (c.highlight || i == pressed) {
                 t.fill.shader = null
                 t.fill.color = t.candidateHighlight
+                t.fill.alpha = android.graphics.Color.alpha(t.candidateHighlight) * ai / 255
                 tmp.set(l + 5 * dp, 6 * dp, l + w - 5 * dp, h - 4 * dp)
                 canvas.drawRoundRect(tmp, 10 * dp, 10 * dp, t.fill)
+                t.fill.alpha = 255
             }
             paint.color = t.text
+            paint.alpha = ai
             paint.textSize = 17f * t.sp
             paint.typeface = if (c.highlight) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             val s = TextUtils.ellipsize(c.shown, paint, w - 14 * dp, TextUtils.TruncateAt.END).toString()
@@ -65,12 +88,15 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         }
         // thin separators between filled, non-highlighted slots
         t.fill.color = t.divider
+        t.fill.alpha = android.graphics.Color.alpha(t.divider) * ai / 255
         for (i in 1 until 3) {
             val a = items[i - 1]
             val b = items[i]
             if (a == null || b == null || a.highlight || b.highlight) continue
             canvas.drawRect(i * w - 0.5f * dp, 13 * dp, i * w + 0.5f * dp, h - 11 * dp, t.fill)
         }
+        t.fill.alpha = 255
+        canvas.restore()
     }
 
     @SuppressLint("ClickableViewAccessibility")

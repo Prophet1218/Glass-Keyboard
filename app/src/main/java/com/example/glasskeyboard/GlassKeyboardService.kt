@@ -110,7 +110,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         updateSuggestions()
     }
     private val saveRunnable = Runnable { worker.execute { saveDicts() } }
-    private val restoreSpaceLabel = Runnable { if (::kb.isInitialized) kb.spaceLabel = spaceName() }
+    private val restoreSpaceLabel = Runnable { if (::kb.isInitialized) kb.spaceLabel = "" }
 
     override fun onCreate() {
         super.onCreate()
@@ -154,7 +154,6 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private val hu get() = lang == "hu"
-    private fun spaceName() = if (hu) "szóköz" else "space"
 
     // ------------------------------------------------------------------ views
 
@@ -178,7 +177,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private fun applyTheme() {
-        val t = GlassTheme(this, prefs.theme)
+        val t = GlassTheme(this, prefs.theme, prefs.glassStyle)
         theme = t
         if (root == null) return
         root?.theme = t
@@ -260,9 +259,13 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         kb.previews = prefs.keyPreview
         kb.spaceCursor = prefs.spaceCursor
         kb.heightScale = prefs.keyHeight / 100f
+        kb.stripDp = prefs.stripHeight.toFloat()
+        kb.animations = prefs.animations
+        overlay.animations = prefs.animations
+        bar.animations = prefs.animations
         kb.locale = engine().locale
-        kb.minRows = if (hu && prefs.accentRow) 5 else 4
-        kb.spaceLabel = spaceName()
+        kb.minRows = letterRows()
+        kb.spaceLabel = ""
         emoji.hungarian = hu
         showKeys()
         shift = 0
@@ -315,9 +318,9 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         layoutKind = kind
         val h = hu
         kb.layout = when (kind) {
-            LayoutKind.LETTERS -> Layouts.letters(h, prefs.accentRow, field)
-            LayoutKind.SYMBOLS -> Layouts.symbols(h, field)
-            LayoutKind.MORE -> Layouts.more(h, field)
+            LayoutKind.LETTERS -> Layouts.letters(h, prefs.accentRow, field, prefs.numberRow, prefs.periodKey)
+            LayoutKind.SYMBOLS -> Layouts.symbols(h, field, prefs.periodKey)
+            LayoutKind.MORE -> Layouts.more(h, field, prefs.periodKey)
             LayoutKind.NUMBER -> {
                 val t = currentInputEditorInfo?.inputType ?: 0
                 Layouts.number(h, t and InputType.TYPE_NUMBER_FLAG_SIGNED != 0, t and InputType.TYPE_NUMBER_FLAG_DECIMAL != 0)
@@ -328,9 +331,17 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         if (kind == LayoutKind.LETTERS) updateShift()
     }
 
+    private fun letterRows() = Layouts.letters(hu, prefs.accentRow, field, prefs.numberRow, prefs.periodKey).rows.size
+
     private fun showKeys() {
+        val wasEmoji = emoji.visibility == View.VISIBLE
         emoji.visibility = View.GONE
         kb.visibility = View.VISIBLE
+        if (wasEmoji && prefs.animations) {
+            kb.alpha = 0f
+            kb.translationY = 10 * resources.displayMetrics.density
+            kb.animate().alpha(1f).translationY(0f).setDuration(200).start()
+        }
     }
 
     // ------------------------------------------------------------------ text helpers
@@ -711,6 +722,11 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         kb.visibility = View.GONE
         emoji.visibility = View.VISIBLE
         emoji.requestLayout()
+        if (prefs.animations) {
+            emoji.alpha = 0f
+            emoji.translationY = 14 * resources.displayMetrics.density
+            emoji.animate().alpha(1f).translationY(0f).setDuration(220).start()
+        }
     }
 
     override fun onGlobe() {
@@ -722,7 +738,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         lang = langs[(langs.indexOf(lang) + 1) % langs.size]
         prefs.language = lang
         kb.locale = engine().locale
-        kb.minRows = if (hu && prefs.accentRow) 5 else 4
+        kb.minRows = letterRows()
         currentInputEditorInfo?.let { configureEnter(it) }
         emoji.hungarian = hu
         setLayout(LayoutKind.LETTERS)

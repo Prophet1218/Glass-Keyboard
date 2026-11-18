@@ -27,7 +27,9 @@ Minden feltöltés után a GitHub Actions lefordítja és kiadja az új APK-t (`
   shift dupla koppintással Caps Lock, okos idézőjelek („ ”), mondat eleji nagybetű.
 - **Emoji panel** kategóriákkal és gyakran használt emojikkal.
 - **Mikrofon gomb**: átvált a telefon hangalapú bevitelére (pl. Google hangbevitel).
-- Világos / sötét / rendszer téma, billentyűmagasság, rezgés, hang.
+- **Liquid glass** vagy **Frosted glass** stílus, világos / sötét / rendszer téma.
+- Bekapcsolható számsor és pont gomb a szóköz mellett, állítható billentyű- és alsó sáv magasság.
+- Animációk: felugró buborékok, rugalmas ékezetválasztó, áttűnések; rezgés, hang.
 
 A billentyűzet nem kér internet-hozzáférést; minden a telefonon marad.
 
@@ -51,5 +53,4 @@ Magyar: ~377 000 szóalak, angol: 160 000 szó. Újraépítés: `tools/build_dic
 
 ## Verziózás
 
-`fő.funkció.javítás` – 1.0.0-tól; az első szám nagy verzió, a második bármilyen új funkció/változás,
-a harmadik csak hibajavítás. Egy szám növelésekor az utána következők nullázódnak.
+`fő.funkció.javítás` – 0.0.2-től lépkedünk felfelé.

@@ -48,6 +48,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
 
     var layout: KbLayout? = null
         set(v) {
+            if (field != null && field !== v) layoutChangedAt = SystemClock.uptimeMillis()
             field = v
             requestLayout()
             layoutKeys()
@@ -63,7 +64,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             }
         }
     var locale: Locale = Locale("hu", "HU")
-    var spaceLabel = "szóköz"
+    var spaceLabel = ""
         set(v) {
             field = v
             invalidate()
@@ -83,6 +84,14 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
     var previews = true
     var spaceCursor = true
     var heightScale = 1f
+    var animations = true
+    /** height of the strip under the keys (globe, mic), dp */
+    var stripDp = 46f
+    private var layoutChangedAt = 0L
+    private val pressStart = HashMap<Key, Long>()
+    private val releaseAt = HashMap<Key, Long>()
+    private val globeIcon = context.getDrawable(R.drawable.ic_globe)!!.mutate()
+    private val micIcon = context.getDrawable(R.drawable.ic_mic)!!.mutate()
     /** Rows of the letter layout: other layouts stretch their rows to the same total height. */
     var minRows = 4
 
@@ -95,7 +104,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
 
     private val rowHeight get() = 54f * dp * heightScale
     private val topPad get() = 4f * dp
-    private val stripHeight get() = if (showGlobe || showMic) 46f * dp else 8f * dp
+    private val stripHeight get() = if (showGlobe || showMic) stripDp * dp else 8f * dp
     private val sidePad get() = 3f * dp
     private val gapH get() = 6f * dp
     private val gapV get() = 11f * dp * heightScale
@@ -153,9 +162,12 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             y += h
         }
         val stripTop = y
-        val s = 44f * dp
-        globeKey.rect.set(sidePad + 6 * dp, stripTop, sidePad + 6 * dp + s, stripTop + minOf(s, stripHeight))
-        micKey.rect.set(w - sidePad - 6 * dp - s, stripTop, w - sidePad - 6 * dp, stripTop + minOf(s, stripHeight))
+        val s = 48f * dp
+        val sh = stripHeight
+        // icons sit in the upper part of the strip, like on iOS (the lower part is thumb room)
+        val iconBand = minOf(sh, 46f * dp)
+        globeKey.rect.set(sidePad + 8 * dp, stripTop, sidePad + 8 * dp + s, stripTop + iconBand)
+        micKey.rect.set(w - sidePad - 8 * dp - s, stripTop, w - sidePad - 8 * dp, stripTop + iconBand)
     }
 
     private fun keyAt(x: Float, y: Float): Key? {
@@ -188,42 +200,82 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
 
     // ------------------------------------------------------------------ drawing
 
+    /** 0..1: how "pressed" a key looks right now (animated in and out). */
+    private fun pressProgress(k: Key, pressed: Boolean, now: Long): Float {
+        if (pressed) {
+            releaseAt.remove(k)
+            val st = pressStart.getOrPut(k) { now }
+            return if (!animations) 1f else ((now - st) / 60f).coerceIn(0f, 1f)
+        }
+        if (pressStart.remove(k) != null && animations) releaseAt[k] = now
+        val u = releaseAt[k] ?: return 0f
+        val q = 1f - (now - u) / 180f
+        if (q <= 0f) {
+            releaseAt.remove(k)
+            return 0f
+        }
+        return q * q
+    }
+
+    private var labelAlpha = 255
+    private var animating = false
+
     override fun onDraw(canvas: Canvas) {
         val l = layout ?: return
         val t = theme
+        val now = SystemClock.uptimeMillis()
+        animating = false
         val pressed = HashSet<Key>()
         for (i in 0 until pointers.size()) pointers.valueAt(i).key?.let { if (!pointers.valueAt(i).consumed || it.type != KeyType.CHAR) pressed += it }
-        for (row in l.rows) for (k in row.keys) drawKey(canvas, k, k in pressed, t)
-        val iconSize = 22f * dp
-        if (showGlobe) {
-            if (globeKey in pressed) {
-                t.fill.color = t.keySpecial
-                canvas.drawCircle(globeKey.rect.centerX(), globeKey.rect.centerY(), 19 * dp, t.fill)
-            }
-            t.icon.color = t.textSoft
-            Icons.globe(canvas, globeKey.rect.centerX(), globeKey.rect.centerY(), iconSize, t.icon)
+        val since = now - layoutChangedAt
+        labelAlpha = if (!animations || since >= 160) 255 else (255 * since / 160f).toInt()
+        if (labelAlpha < 255) animating = true
+        for (row in l.rows) for (k in row.keys) {
+            val p = pressProgress(k, k in pressed, now)
+            if (p > 0f && p < 1f) animating = true
+            if (k in pressed && p < 1f) animating = true
+            drawKey(canvas, k, p, t)
         }
-        if (showMic) {
-            if (micKey in pressed) {
-                t.fill.color = t.keySpecial
-                canvas.drawCircle(micKey.rect.centerX(), micKey.rect.centerY(), 19 * dp, t.fill)
-            }
-            t.icon.color = t.textSoft
-            Icons.mic(canvas, micKey.rect.centerX(), micKey.rect.centerY(), iconSize, t.icon)
-        }
+        if (showGlobe) drawStripIcon(canvas, globeKey, globeIcon, pressProgress(globeKey, globeKey in pressed, now), t)
+        if (showMic) drawStripIcon(canvas, micKey, micIcon, pressProgress(micKey, micKey in pressed, now), t)
         t.icon.color = t.text
+        if (animating || releaseAt.isNotEmpty()) postInvalidateOnAnimation()
     }
 
-    private fun drawKey(c: Canvas, k: Key, pressed: Boolean, t: GlassTheme) {
+    private fun drawStripIcon(c: Canvas, k: Key, d: android.graphics.drawable.Drawable, p: Float, t: GlassTheme) {
+        val cx = k.rect.centerX()
+        val cy = k.rect.centerY()
+        if (p > 0f) {
+            t.fill.shader = null
+            t.fill.color = t.keySpecial
+            t.fill.alpha = (android.graphics.Color.alpha(t.keySpecial) * p).toInt()
+            c.drawCircle(cx, cy, (16 + 4 * p) * dp, t.fill)
+            t.fill.alpha = 255
+        }
+        val size = (minOf(26f * dp, k.rect.height() * 0.62f) * (1f - 0.08f * p)).toInt()
+        d.setTint(t.stripIcon)
+        d.setBounds((cx - size / 2f).toInt(), (cy - size / 2f).toInt(), (cx + size / 2f).toInt(), (cy + size / 2f).toInt())
+        d.draw(c)
+    }
+
+    private fun drawKey(c: Canvas, k: Key, p: Float, t: GlassTheme) {
         val r = k.rect
         val color = when {
-            k.type == KeyType.ENTER && enterAccent -> if (pressed) t.accentPressed else t.accent
+            k.type == KeyType.ENTER && enterAccent -> GlassTheme.lerpColor(t.accent, t.accentPressed, p)
             k.type == KeyType.SHIFT && shift > 0 -> t.keyActive
-            k.special -> if (pressed) t.keySpecialPressed else t.keySpecial
-            else -> if (pressed) t.keyPressed else t.key
+            k.special -> GlassTheme.lerpColor(t.keySpecial, t.keySpecialPressed, p)
+            else -> GlassTheme.lerpColor(t.key, t.keyPressed, p)
         }
+        val scale = if (animations) 1f + 0.04f * p else 1f
+        c.save()
+        if (scale != 1f) c.scale(scale, scale, r.centerX(), r.centerY())
         t.drawKey(c, r, color)
-        if (cursorMode) return
+        if (!cursorMode) drawLabel(c, k, t)
+        c.restore()
+    }
+
+    private fun drawLabel(c: Canvas, k: Key, t: GlassTheme) {
+        val r = k.rect
         val cx = r.centerX()
         val cy = r.centerY()
         val ink = if (k.type == KeyType.ENTER && enterAccent) 0xFFFFFFFF.toInt()
@@ -231,15 +283,20 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         t.icon.color = ink
         t.iconFill.color = ink
         t.label.color = ink
+        t.icon.alpha = labelAlpha
+        t.iconFill.alpha = labelAlpha
+        t.label.alpha = labelAlpha
         val iconSize = minOf(r.height() * 0.55f, 24f * dp)
         when (k.type) {
             KeyType.SHIFT -> Icons.shift(c, cx, cy, iconSize, t.icon, t.iconFill, shift > 0, shift == 2)
             KeyType.DELETE -> Icons.backspace(c, cx, cy, iconSize, t.icon)
             KeyType.EMOJI -> Icons.emoji(c, cx, cy, iconSize, t.icon, t.iconFill)
             KeyType.ENTER -> if (enterLabel.isEmpty()) Icons.enter(c, cx, cy, iconSize, t.icon) else text(c, enterLabel, cx, cy, 16f, t)
-            KeyType.SPACE -> {
-                t.label.color = if (enterAccent) t.text else t.text
-                text(c, spaceLabel, cx, cy, 16f, t)
+            KeyType.SPACE -> if (spaceLabel.isNotEmpty()) {
+                // only shown briefly after switching language
+                t.label.color = t.textSoft
+                t.label.alpha = labelAlpha * 255 / 255
+                text(c, spaceLabel, cx, cy, 15f, t)
             }
             KeyType.TO_SYMBOLS, KeyType.TO_LETTERS, KeyType.TO_MORE -> text(c, k.label, cx, cy, 16f, t)
             else -> {

@@ -126,6 +126,8 @@ class SettingsActivity : Activity() {
         typing.addView(switchRow("Automatikus javítás", "Elgépelések és hiányzó ékezetek javítása szóköznél (jo → jó, koszonom → köszönöm). Visszatörléssel visszavonható.", Prefs.K_AUTOCORRECT, true))
         typing.addView(switchRow("Javaslatsáv", "Szójavaslatok és következő szó a billentyűk fölött", Prefs.K_SUGGESTIONS, true))
         typing.addView(switchRow("Szavak tanulása", "Megjegyzi a saját szavaidat és szófordulataidat", Prefs.K_LEARN, true))
+        typing.addView(switchRow("Számsor", "Külön számsor (1–0) a betűk fölött", Prefs.K_NUMBER_ROW, false))
+        typing.addView(switchRow("Pont a szóköz mellett", "„.” gomb a szóköz jobb oldalán (hosszan nyomva: , ? ! … : ;)", Prefs.K_PERIOD_KEY, false))
         typing.addView(switchRow("Ékezetsor", "Külön sor az á é í ó ö ő ú ü ű betűknek (magyarnál)", Prefs.K_ACCENT_ROW, false))
         typing.addView(switchRow("Automatikus nagybetű", "Mondat elején nagybetűvel kezd", Prefs.K_AUTOCAPS, true))
         typing.addView(switchRow("Dupla szóköz = pont", "Két szóköz gyorsan egymás után: „. ”", Prefs.K_DOUBLE_SPACE, true))
@@ -135,8 +137,11 @@ class SettingsActivity : Activity() {
 
         // ---- look & feel
         val look = card("Megjelenés és visszajelzés")
+        look.addView(choiceRow("Üveg stílus", arrayOf("Liquid glass – áttetsző, csillanó", "Frosted glass – matt, dérüveg"), Prefs.K_GLASS, 0))
         look.addView(choiceRow("Téma", arrayOf("Rendszer szerint", "Világos", "Sötét"), Prefs.K_THEME, 0))
-        look.addView(seekRow("Billentyűmagasság", Prefs.K_KEY_HEIGHT, 80, 130, 100))
+        look.addView(seekRow("Billentyűmagasság", Prefs.K_KEY_HEIGHT, 80, 130, 100, "%"))
+        look.addView(seekRow("Alsó sáv magassága (földgömb, mikrofon)", Prefs.K_STRIP_HEIGHT, 28, 80, 46, " dp"))
+        look.addView(switchRow("Animációk", "Felugró buborékok, rugalmas ékezetválasztó, áttűnések", Prefs.K_ANIM, true))
         look.addView(switchRow("Billentyű-előnézet", "Felnagyított betű buborék gépeléskor", Prefs.K_PREVIEW, true))
         look.addView(choiceRow("Rezgés", arrayOf("Ki", "Enyhe", "Erős"), Prefs.K_HAPTICS, 1))
         look.addView(switchRow("Hang", "Kattanó hang gépeléskor", Prefs.K_SOUND, false))
@@ -297,11 +302,11 @@ class SettingsActivity : Activity() {
         return r
     }
 
-    private fun seekRow(title: String, key: String, min: Int, max: Int, def: Int): View {
+    private fun seekRow(title: String, key: String, min: Int, max: Int, def: Int, suffix: String): View {
         val box = LinearLayout(this)
         box.orientation = LinearLayout.VERTICAL
         box.setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
-        val label = text("$title: ${prefs.sp.getInt(key, def)}%", 16f, textColor)
+        val label = text("$title: ${prefs.sp.getInt(key, def)}$suffix", 16f, textColor)
         box.addView(label)
         val sb = SeekBar(this)
         sb.max = max - min
@@ -309,7 +314,7 @@ class SettingsActivity : Activity() {
         sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 val v = min + progress
-                label.text = "$title: $v%"
+                label.text = "$title: $v$suffix"
                 if (fromUser) prefs.sp.edit().putInt(key, v).apply()
             }
 

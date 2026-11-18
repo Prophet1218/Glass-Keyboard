@@ -91,7 +91,7 @@ object Layouts {
     private fun row(chars: String, hu: Boolean, pad: Float = 0f) =
         KbRow(chars.split(" ").map { ch(it, hu) }, pad)
 
-    private fun bottomRow(hu: Boolean, field: FieldKind, toggle: Key): KbRow {
+    private fun bottomRow(hu: Boolean, field: FieldKind, toggle: Key, period: Boolean = false): KbRow {
         val enter = Key(KeyType.ENTER, "", "\n", 2.5f)
         val keys = when (field) {
             FieldKind.EMAIL -> listOf(
@@ -100,7 +100,10 @@ object Layouts {
             FieldKind.URL -> listOf(
                 toggle, ch("/", hu), Key(KeyType.SPACE, "", " ", 4.25f), dotKey(hu, true), enter,
             )
-            FieldKind.TEXT -> listOf(
+            FieldKind.TEXT -> if (period) listOf(
+                toggle, Key(KeyType.EMOJI, "", "", 1.25f), Key(KeyType.SPACE, "", " ", 4f),
+                Key(KeyType.CHAR, ".", ".", 1f, listOf(",", "?", "!", "…", ":", ";")), enter,
+            ) else listOf(
                 toggle, Key(KeyType.EMOJI, "", "", 1.25f), Key(KeyType.SPACE, "", " ", 5f), enter,
             )
         }
@@ -114,8 +117,9 @@ object Layouts {
         return Key(KeyType.CHAR, ".", ".", 1f, pops)
     }
 
-    fun letters(hu: Boolean, accentRow: Boolean, field: FieldKind): KbLayout {
+    fun letters(hu: Boolean, accentRow: Boolean, field: FieldKind, numberRow: Boolean = false, period: Boolean = false): KbLayout {
         val rows = ArrayList<KbRow>()
+        if (numberRow) rows += row("1 2 3 4 5 6 7 8 9 0", hu)
         if (hu && accentRow) rows += row("á é í ó ö ő ú ü ű", true, 0.5f)
         rows += row(if (hu) "q w e r t z u i o p" else "q w e r t y u i o p", hu)
         rows += row("a s d f g h j k l", hu, 0.5f)
@@ -124,11 +128,11 @@ object Layouts {
         for (c in (if (hu) "y x c v b n m" else "z x c v b n m").split(" ")) third += ch(c, hu)
         third += Key(KeyType.DELETE, "", "", 1.5f)
         rows += KbRow(third)
-        rows += bottomRow(hu, field, Key(KeyType.TO_SYMBOLS, "123", "", 1.25f))
+        rows += bottomRow(hu, field, Key(KeyType.TO_SYMBOLS, "123", "", 1.25f), period)
         return KbLayout(LayoutKind.LETTERS, rows)
     }
 
-    fun symbols(hu: Boolean, field: FieldKind): KbLayout {
+    fun symbols(hu: Boolean, field: FieldKind, period: Boolean = false): KbLayout {
         val rows = ArrayList<KbRow>()
         rows += row("1 2 3 4 5 6 7 8 9 0", hu)
         rows += row(if (hu) "- / : ; ( ) Ft & @ \"" else "- / : ; ( ) $ & @ \"", hu)
@@ -137,11 +141,11 @@ object Layouts {
         for (c in ". , ? ! '".split(" ")) third += ch(c, hu, 1.4f)
         third += Key(KeyType.DELETE, "", "", 1.5f)
         rows += KbRow(third)
-        rows += bottomRow(hu, field, Key(KeyType.TO_LETTERS, "ABC", "", 1.25f))
+        rows += bottomRow(hu, field, Key(KeyType.TO_LETTERS, "ABC", "", 1.25f), period)
         return KbLayout(LayoutKind.SYMBOLS, rows)
     }
 
-    fun more(hu: Boolean, field: FieldKind): KbLayout {
+    fun more(hu: Boolean, field: FieldKind, period: Boolean = false): KbLayout {
         val rows = ArrayList<KbRow>()
         rows += row("[ ] { } # % ^ * + =", hu)
         rows += row(if (hu) "_ \\ | ~ < > € $ £ •" else "_ \\ | ~ < > € £ ¥ •", hu)
@@ -150,7 +154,7 @@ object Layouts {
         for (c in ". , ? ! '".split(" ")) third += ch(c, hu, 1.4f)
         third += Key(KeyType.DELETE, "", "", 1.5f)
         rows += KbRow(third)
-        rows += bottomRow(hu, field, Key(KeyType.TO_LETTERS, "ABC", "", 1.25f))
+        rows += bottomRow(hu, field, Key(KeyType.TO_LETTERS, "ABC", "", 1.25f), period)
         return KbLayout(LayoutKind.MORE, rows)
     }
 

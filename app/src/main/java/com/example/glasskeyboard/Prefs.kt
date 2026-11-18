@@ -32,6 +32,13 @@ class Prefs(context: Context) {
     val spaceCursor get() = b(K_SPACE_CURSOR, true)
     val sound get() = b(K_SOUND, false)
     val showMic get() = b(K_MIC, true)
+    val numberRow get() = b(K_NUMBER_ROW, false)
+    val periodKey get() = b(K_PERIOD_KEY, false)
+    val animations get() = b(K_ANIM, true)
+    /** 0 = liquid glass, 1 = frosted glass */
+    val glassStyle get() = sp.getInt(K_GLASS, 0)
+    /** height of the strip under the keys (globe, mic) in dp */
+    val stripHeight get() = sp.getInt(K_STRIP_HEIGHT, 46)
 
     /** 0 = off, 1 = light, 2 = strong */
     val haptics get() = sp.getInt(K_HAPTICS, 1)
@@ -64,5 +71,10 @@ class Prefs(context: Context) {
         const val K_THEME = "theme"
         const val K_KEY_HEIGHT = "key_height"
         const val K_RECENT_EMOJI = "recent_emoji"
+        const val K_NUMBER_ROW = "number_row"
+        const val K_PERIOD_KEY = "period_key"
+        const val K_ANIM = "animations"
+        const val K_GLASS = "glass_style"
+        const val K_STRIP_HEIGHT = "strip_height"
     }
 }
