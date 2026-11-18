@@ -1,9 +1,8 @@
-## Glass Keyboard 0.0.12
+## Glass Keyboard 0.0.13
 
-- **Navigációs sáv:** a rendszer billentyűzet-sávját (NavigationBarFrame) a billentyűzet a saját színére festi, és a billentyűzet ablaka élétől élig ér (a WM Keyboard módszere)
-- **123 váltás:** a háttér színe nem változik többé
-- **Eszköztár:** sorrend: billentyűzet elrejtése, emoji, GIF, vágólap, beállítások; a gomboknak háttere van (Liquid / Frosted / tömör, választható), lejjebb, a sáv közepén; az emoji / GIF / vágólap gomb újra megnyomva visszavált a billentyűkre
-- **GIF választó:** népszerű és kategóriák szerinti GIF-ek, a beírt szóra is keres; képként küldi, ahol az alkalmazás fogad képet. A Tenor API megszűnt (2026. június 30.), ezért KLIPY-t használ – ingyenes kulcs kell hozzá (beállítások → GIF)
-- **Betűbuborék liquid glass:** tisztább, a mögötte lévő gombok nem zavarják a betűt
-- **Diktálás:** először a telefon beépített (offline) felismerőjét próbálja, utána a többit
-- **Autocorrect:** hosszabb szavaknál nagyobb elírásokat is javít (pl. kosznom → köszönöm, megcsináltma → megcsináltam, mindenkkinek → mindenkinek)
+- **Autocorrect – ékezetek:** ha a szó ékezetekkel együtt szerepel a szótárban, szóköznél mindig kijavítja (diktalas → diktálás, beirok → beírok, javitom → javítom, menube → menübe, diktalasokat → diktálásokat)
+- **Autocorrect – tanult elírások:** a javítatlanul hagyott elírásokat (pl. „javutsd”) nem tanulja meg szóként, a korábban véletlenül megtanultakat egyszer automatikusan törli. Amit visszavonással megtartasz, az továbbra is megmarad
+- **123 váltás:** a háttér elmosását és a navigációs sáv színét minden elrendezésváltás után újra beállítja, így a szín nem változik meg
+- **Navigációs sáv:** átlátszó, ha a billentyűzet alá van rajzolva; különben a billentyűzet aljának színe és átlátszósága, így nem lesz sötétebb csík
+- **Diktálás:** előbb a Google beszédfelismerőjét próbálja, a régi felismerők késve érkező hibáit figyelmen kívül hagyja. Ha egyik sem működik a billentyűzeten belül, megnyitja a telefon saját diktálóablakát, és a szöveget utána beírja
+- **GIF:** a kategóriák helyén keresősáv van. Rákoppintva a billentyűzettel írhatsz bele, a return gomb keres

@@ -184,38 +184,30 @@ class GifPanel(
         setOnClickListener { onClick() }
     }
 
-    private fun categories(): List<String> = if (hungarian)
-        listOf("haha", "szia", "köszi", "szeretlek", "wow", "igen", "nem", "oké", "szomorú", "buli", "taps", "jó éjt")
-    else listOf("lol", "hi", "thanks", "love", "wow", "yes", "no", "ok", "sad", "party", "clap", "good night")
+    /** Tapped the search field: the keyboard types into it (see [GifSearchBar]). */
+    var onSearchTap: (String) -> Unit = {}
+    /** What the panel shows now ("" = trending). */
+    var query = ""
+        private set
 
-    /** Opens the panel; [query] (e.g. the word you had typed) searches straight away. */
+    /** Opens the panel; [query] searches straight away, "" shows what is trending. */
     fun open(query: String) {
+        this.query = query.trim()
         column.removeAllViews()
-        // header: ABC + categories
+        // header: ABC + search field
         val head = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding((8 * dp).toInt(), (6 * dp).toInt(), (8 * dp).toInt(), (6 * dp).toInt())
         }
         head.addView(chip("ABC") { onBack() })
-        val cats = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        val hs = HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(cats)
-        }
-        val trending = if (hungarian) "Népszerű" else "Trending"
-        val all = listOf(trending) + (if (query.isNotBlank() && query !in categories()) listOf(query) else emptyList()) + categories()
-        fun select(label: String) {
-            cats.removeAllViews()
-            for (c in all) {
-                cats.addView(chip(c, c == label) { select(c) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = (6 * dp).toInt() })
-            }
-            load(if (label == trending) "" else label)
-        }
-        head.addView(hs, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val field = SearchPill(context, theme, this.query, if (hungarian) "GIF keresése" else "Search GIFs")
+        field.setOnClickListener { onSearchTap(this.query) }
+        field.onClear = { open("") }
+        head.addView(field, LinearLayout.LayoutParams(0, (34 * dp).toInt(), 1f).apply { leftMargin = (8 * dp).toInt() })
         column.addView(head)
         column.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        select(if (query.isNotBlank()) query else trending)
+        load(this.query)
     }
 
     fun close() {
@@ -322,5 +314,138 @@ class GifPanel(
         }
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
         return android.graphics.drawable.BitmapDrawable(resources, bmp)
+    }
+}
+
+
+/** The search field at the top of the GIF panel (tap to type a search). */
+@android.annotation.SuppressLint("ViewConstructor")
+class SearchPill(context: Context, private val t: GlassTheme, private val text: String, private val hint: String) : android.view.View(context) {
+    var onClear: (() -> Unit)? = null
+    private val dp = resources.displayMetrics.density
+    private val fill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val stroke = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeCap = android.graphics.Paint.Cap.ROUND
+        strokeJoin = android.graphics.Paint.Join.ROUND
+    }
+    private val tp = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val rect = android.graphics.RectF()
+
+    override fun onDraw(c: android.graphics.Canvas) {
+        val h = height.toFloat()
+        rect.set(0f, 0f, width.toFloat(), h)
+        fill.color = t.key
+        c.drawRoundRect(rect, h / 2, h / 2, fill)
+        stroke.strokeWidth = 1.8f * dp
+        stroke.color = t.textSoft
+        Icons.search(c, h * 0.55f, h / 2, 16 * dp, stroke)
+        tp.textSize = 15 * resources.displayMetrics.scaledDensity
+        tp.color = if (text.isEmpty()) t.textSoft else t.text
+        val fm = tp.fontMetrics
+        val shown = android.text.TextUtils.ellipsize(text.ifEmpty { hint }, android.text.TextPaint(tp), width - h * 2.2f, android.text.TextUtils.TruncateAt.END).toString()
+        c.drawText(shown, h * 1.05f, h / 2 - (fm.ascent + fm.descent) / 2, tp)
+        if (text.isNotEmpty()) Icons.close(c, width - h / 2, h / 2, 14 * dp, stroke)
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        if (text.isNotEmpty() && e.x > width - height * 1.1f) {
+            if (e.action == android.view.MotionEvent.ACTION_UP) onClear?.invoke()
+            return true
+        }
+        return super.onTouchEvent(e)
+    }
+}
+
+/**
+ * Replaces the suggestion bar while a GIF search is typed: back arrow, the search text with a
+ * blinking cursor, and a clear button. The keyboard's keys type into it; return searches.
+ */
+@android.annotation.SuppressLint("ViewConstructor")
+class GifSearchBar(context: Context) : android.view.View(context) {
+    var theme: GlassTheme = GlassTheme(context, 0)
+        set(v) {
+            field = v
+            invalidate()
+        }
+    var hungarian = true
+    var text = ""
+        set(v) {
+            field = v
+            shownAt = android.os.SystemClock.uptimeMillis()
+            invalidate()
+        }
+    var onBack: () -> Unit = {}
+    var onSearch: () -> Unit = {}
+    var onClear: () -> Unit = {}
+    private var shownAt = 0L
+    private val dp = resources.displayMetrics.density
+    private val fill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val stroke = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeCap = android.graphics.Paint.Cap.ROUND
+        strokeJoin = android.graphics.Paint.Join.ROUND
+    }
+    private val tp = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val rect = android.graphics.RectF()
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (44 * dp).toInt())
+    }
+
+    private fun pillLeft() = 44 * dp
+    private fun pillRight() = width - 8 * dp
+
+    override fun onDraw(c: android.graphics.Canvas) {
+        val t = theme
+        val h = height.toFloat()
+        stroke.strokeWidth = 2f * dp
+        stroke.color = t.text
+        Icons.back(c, 24 * dp, h / 2, 20 * dp, stroke)
+        val top = 5 * dp
+        val bottom = h - 5 * dp
+        rect.set(pillLeft(), top, pillRight(), bottom)
+        val r = (bottom - top) / 2
+        fill.color = t.key
+        c.drawRoundRect(rect, r, r, fill)
+        stroke.strokeWidth = 1.8f * dp
+        stroke.color = t.textSoft
+        Icons.search(c, rect.left + r, h / 2, 16 * dp, stroke)
+        tp.textSize = 16 * resources.displayMetrics.scaledDensity
+        val fm = tp.fontMetrics
+        val base = h / 2 - (fm.ascent + fm.descent) / 2
+        val x0 = rect.left + r * 1.9f
+        val maxW = rect.width() - r * 3.6f
+        var shown = text
+        while (shown.isNotEmpty() && tp.measureText(shown) > maxW) shown = shown.substring(1)
+        if (text.isEmpty()) {
+            tp.color = t.textSoft
+            c.drawText(if (hungarian) "GIF keresése" else "Search GIFs", x0 + 3 * dp, base, tp)
+        } else {
+            tp.color = t.text
+            c.drawText(shown, x0, base, tp)
+        }
+        // blinking cursor
+        val now = android.os.SystemClock.uptimeMillis()
+        if (((now - shownAt) / 530) % 2 == 0L) {
+            fill.color = t.accent
+            val cx = x0 + (if (text.isEmpty()) 0f else tp.measureText(shown)) + 1.5f * dp
+            c.drawRect(cx - 1 * dp, h / 2 - 10 * dp, cx + 1 * dp, h / 2 + 10 * dp, fill)
+        }
+        if (text.isNotEmpty()) Icons.close(c, rect.right - r, h / 2, 14 * dp, stroke)
+        postInvalidateDelayed(530 - (now - shownAt) % 530)
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        if (e.action == android.view.MotionEvent.ACTION_UP) {
+            when {
+                e.x < pillLeft() -> onBack()
+                text.isNotEmpty() && e.x > pillRight() - height -> onClear()
+                else -> {}
+            }
+        }
+        return true
     }
 }

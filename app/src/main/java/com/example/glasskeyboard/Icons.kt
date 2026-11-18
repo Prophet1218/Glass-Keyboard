@@ -171,4 +171,30 @@ object Icons {
         fill.textSize = oldSize
         fill.typeface = oldTf
     }
+
+    /** Magnifying glass. */
+    fun search(c: Canvas, cx: Float, cy: Float, s: Float, stroke: Paint) {
+        val rr = s * 0.3f
+        val ox = cx - s * 0.08f
+        val oy = cy - s * 0.08f
+        c.drawCircle(ox, oy, rr, stroke)
+        val d = rr * 0.7071f
+        c.drawLine(ox + d, oy + d, cx + s * 0.42f, cy + s * 0.42f, stroke)
+    }
+
+    /** Arrow pointing left (back). */
+    fun back(c: Canvas, cx: Float, cy: Float, s: Float, stroke: Paint) {
+        p.reset()
+        p.moveTo(cx + s * 0.1f, cy - s * 0.36f)
+        p.lineTo(cx - s * 0.26f, cy)
+        p.lineTo(cx + s * 0.1f, cy + s * 0.36f)
+        c.drawPath(p, stroke)
+    }
+
+    /** × */
+    fun close(c: Canvas, cx: Float, cy: Float, s: Float, stroke: Paint) {
+        val h = s * 0.28f
+        c.drawLine(cx - h, cy - h, cx + h, cy + h, stroke)
+        c.drawLine(cx - h, cy + h, cx + h, cy - h, stroke)
+    }
 }

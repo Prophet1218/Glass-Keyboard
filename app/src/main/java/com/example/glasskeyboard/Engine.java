@@ -3,6 +3,7 @@ package com.example.glasskeyboard;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -298,7 +299,10 @@ public final class Engine {
     private int userFreq(String u) {
         int c = user.count(u);
         int d = dict.freq(u);
-        return Math.max(d, Math.min(200, 110 + 15 * Math.min(c, 6)));
+        if (d > 0) return Math.max(d, Math.min(200, 110 + 15 * Math.min(c, 6)));
+        // a word only the user types: weak until it was used (or kept) several times, so a
+        // learned typo never outranks the real word
+        return Math.min(170, 40 + 18 * Math.min(c, 7));
     }
 
     /** Weighted edit distance between typed word and a candidate (same costs as the trie search). */
@@ -331,7 +335,7 @@ public final class Engine {
     /** True when the word is acceptable as typed (dictionary, learned, or a valid inflection/compound). */
     public boolean isValid(String lower) {
         if (lower.isEmpty()) return true;
-        if (dict.freq(lower) > 0 || user.isKnown(lower)) return true;
+        if (dict.freq(lower) > 0 || userValid(lower)) return true;
         int dash = lower.indexOf('-');
         if (dash > 0 && dash < lower.length() - 1) {
             for (String part : lower.split("-")) {
@@ -481,13 +485,14 @@ public final class Engine {
             }
         }
         // stem + suffixes (single word)
-        for (int split = len - 2; split >= 3; split--) {
-            String st = bestVariant(w.substring(0, split), 90);
-            if (len - split < 2) continue;
+        for (int split = len - 1; split >= 3; split--) {
+            // longest stem first: "diktalast" = diktálás + t, not diktál + as + t
+            String st = bestVariant(w.substring(0, split), len - split == 1 || split * 10 >= len * 6 ? 40 : 90);
             if (st == null) continue;
             String suf = suffixVariant(w.substring(split));
             if (suf != null) {
-                int score = dict.freq(st) - 5;
+                // a long known stem beats gluing short words together ("dik" + "tál" + …)
+                int score = dict.freq(st) - 5 + (split * 10 >= len * 6 ? 300 : 0);
                 if (score > bestScore) {
                     bestScore = score;
                     best = st + suf;
@@ -653,8 +658,15 @@ public final class Engine {
             r.suggestions.add(typed);
             return r;
         }
-        boolean dictValid = dict.freq(lower) > 0 || user.isKnown(lower);
+        boolean dictValid = dict.freq(lower) > 0 || userValid(lower);
         boolean morphValid = !dictValid && isValid(lower);
+        // accent-only variant of the whole word, when the typed form itself is not a word
+        String accentFix = null;
+        if (hungarian && !dictValid && lower.length() >= 2) {
+            String v = bestVariant(lower, 12);
+            if (v != null && !v.equals(lower) && accentOnly(lower, v)) accentFix = v;
+        }
+        if (accentFix != null) morphValid = false;
         r.typedValid = dictValid || morphValid;
         int len = lower.length();
         double mc = maxCost(len);
@@ -700,9 +712,18 @@ public final class Engine {
                 boolean dropsAccent = looseKey(lower).equals(looseKey(best.word)) && !accentsKept(lower, best.word);
                 if (ft < 100 && best.cost <= 1.3 && best.freq >= ft + 60 && !dropsAccent) correction = best.word;
             }
+        } else if (accentFix != null) {
+            // The same word with its accents is in the dictionary ("diktalas" → "diktálás",
+            // "beirok" → "beírok"): by far the most common Hungarian typo, so it always wins.
+            correction = accentFix;
         } else if (morphValid) {
             // Looks like a valid inflected/compound form; correct only to a very close, common word.
             if (best != null && ((best.cost <= 0.6 && best.freq >= 80) || (best.cost <= 1.0 && best.freq >= 140))) correction = best.word;
+            // …or put back the accents of an inflected form ("nyomasakor" → "nyomásakor")
+            if (correction == null && hungarian) {
+                String restored = restoreAccents(lower);
+                if (restored != null && accentOnly(lower, restored)) correction = restored;
+            }
         } else {
             if (best != null && best.cost <= mc) correction = best.word;
             if (hungarian && (best == null || best.cost > 0.7)) {
@@ -774,10 +795,59 @@ public final class Engine {
         return out;
     }
 
+    /** Kept (undo / tapped) words get at least this count: trusted even if they look like a typo. */
+    static final int TRUSTED = 5;
+
+    /** Accent-less form of a dictionary word ("diktalas"): such words are typos unless the user insists. */
+    private boolean accentTypo(String lower) {
+        if (!hungarian || dict.freq(lower) > 0) return false;
+        String v = bestVariant(lower, 12);
+        return v != null && !v.equals(lower) && accentOnly(lower, v);
+    }
+
+    /** A learned word counts as valid; a learned accent-less typo only when the user kept it on purpose. */
+    private boolean userValid(String lower) {
+        int c = user.count(lower);
+        if (c < UserDict.KNOWN) return false;
+        return c >= TRUSTED || !accentTypo(lower);
+    }
+
+    /**
+     * One-off clean-up of words learned by mistake (typos that were left uncorrected), e.g.
+     * "diktalas" or "javutsd": not in the dictionary, used only a few times, and a common word is
+     * a small step away. Words the user kept on purpose (undo, tap) are not touched.
+     */
+    public synchronized int pruneLearnedTypos() {
+        int removed = 0;
+        for (Map.Entry<String, Integer> e : user.all()) {
+            String w = e.getKey();
+            if (e.getValue() >= TRUSTED || dict.freq(w) > 0 || w.length() < 3 || skipWord(w)) continue;
+            boolean typo = accentTypo(w);
+            if (!typo && !(hungarian && (huInflected(w, 70) || huCompound(w)))) {
+                for (Cand c : search(w, 0.8, false).values()) {
+                    if (!c.word.equals(w) && c.freq >= 80 && c.word.indexOf(' ') < 0) {
+                        typo = true;
+                        break;
+                    }
+                }
+            }
+            if (typo) {
+                user.remove(w);
+                removed++;
+            }
+        }
+        return removed;
+    }
+
     /** Called when a word is committed, so the keyboard learns the user's vocabulary. */
     public void learn(String prevLower, String wordLower, boolean wasCorrected) {
         if (wordLower.isEmpty() || skipWord(wordLower)) return;
         boolean known = dict.freq(wordLower) > 0;
+        if (!known && !wasCorrected && accentTypo(wordLower)) {
+            // typed without accents and left as it was (e.g. autocorrect off for the field): do not learn the typo
+            if (prevLower != null && !prevLower.isEmpty()) user.addBigram(prevLower, wordLower);
+            return;
+        }
         if (known || !wasCorrected) user.addWord(wordLower, 1);
         if (prevLower != null && !prevLower.isEmpty()) user.addBigram(prevLower, wordLower);
     }
@@ -786,6 +856,6 @@ public final class Engine {
     public void learnRejected(String wordLower) {
         if (wordLower.isEmpty()) return;
         int c = user.count(wordLower);
-        if (c < UserDict.KNOWN) user.addWord(wordLower, UserDict.KNOWN - c);
+        if (c < TRUSTED) user.addWord(wordLower, TRUSTED - c);
     }
 }

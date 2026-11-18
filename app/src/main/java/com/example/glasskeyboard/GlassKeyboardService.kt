@@ -217,6 +217,9 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private lateinit var clips: ClipStore
     private lateinit var clipPanel: ClipboardPanel
     private lateinit var gifPanel: GifPanel
+    private lateinit var gifBar: GifSearchBar
+    /** Non-null while a GIF search is being typed: the keys type into it instead of the app. */
+    private var gifQuery: StringBuilder? = null
     private var clipListener: android.content.ClipboardManager.OnPrimaryClipChangedListener? = null
 
     override fun onCreate() {
@@ -231,6 +234,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         audio = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         clips = ClipStore(prefs)
+        VoiceActivity.listener = { main.postDelayed({ takeVoiceResult() }, 400) }
         // remember what gets copied (the active keyboard is allowed to read the clipboard)
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
         if (cm != null) {
@@ -266,7 +270,19 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         } catch (_: Exception) {
             emptyList()
         }
-        Engine(l == "hu", Dict(buf), Shared.userDict(this, l), proper)
+        val e = Engine(l == "hu", Dict(buf), Shared.userDict(this, l), proper)
+        // 0.0.13: drop typos that older versions learned by mistake (once per language)
+        val flag = "pruned_typos_v13_$l"
+        if (!prefs.sp.getBoolean(flag, false)) {
+            prefs.sp.edit().putBoolean(flag, true).apply()
+            worker.execute {
+                try {
+                    if (e.pruneLearnedTypos() > 0) Shared.userDict(this, l).save()
+                } catch (_: Exception) {
+                }
+            }
+        }
+        e
     }
 
     private fun saveDicts() {
@@ -309,15 +325,27 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         gifPanel.visibility = View.GONE
         area.addView(gifPanel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bar.onTool = { onTool(it) }
+        gifPanel.onSearchTap = { startGifSearch(it) }
+        gifBar = GifSearchBar(this)
+        gifBar.visibility = View.GONE
+        gifBar.onBack = { endGifSearch(); showGifs(gifPanel.query) }
+        gifBar.onClear = {
+            gifQuery?.setLength(0)
+            gifBar.text = ""
+        }
         val panel = LinearLayout(this)
         panel.orientation = LinearLayout.VERTICAL
         panel.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        panel.addView(gifBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         panel.addView(area, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val r = KeyboardRoot(this, panel, overlay)
         root = r
         overlay.backdrop = { scale -> renderBackdrop(scale) }
         // the strip below the sheet follows the sheet's size
-        r.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> window?.window?.decorView?.invalidate() }
+        r.addOnLayoutChangeListener { _, l, t, rr, b, ol, ot, orr, ob ->
+            window?.window?.decorView?.invalidate()
+            if (l != ol || t != ot || rr != orr || b != ob) scheduleReassert()
+        }
         // draw the glass sheet behind the navigation bar too (no black band under the keys)
         if (Build.VERSION.SDK_INT >= 30) {
             window?.window?.let { w ->
@@ -330,6 +358,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                 // the system's IME navigation bar reports itself as a caption bar
                 val types = android.view.WindowInsets.Type.navigationBars() or android.view.WindowInsets.Type.captionBar()
                 r.bottomInset = insets.getInsets(types).bottom
+                scheduleReassert()
                 insets
             }
         }
@@ -347,9 +376,18 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         emoji.theme = t
         clipPanel.theme = t
         gifPanel.theme = t
+        gifBar.theme = t
         overlay.theme = t
         styleNavBar(t)
     }
+
+    /**
+     * Colour of the strip under the keys (gesture handle): see-through where the sheet itself is
+     * drawn under it, otherwise the sheet's bottom colour with the sheet's own transparency, so it
+     * looks the same as the glass above it instead of a darker band.
+     */
+    private fun navColor(t: GlassTheme): Int =
+        if ((root?.bottomInset ?: 0) > 0) android.graphics.Color.TRANSPARENT else t.panelBottom
 
     private fun styleNavBar(t: GlassTheme) {
         val w = window?.window ?: return
@@ -357,27 +395,20 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         @Suppress("DEPRECATION")
         w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
         if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
-        // same colour as the bottom of the glass sheet
-        @Suppress("DEPRECATION")
-        w.navigationBarColor = t.panelBottom or 0xFF000000.toInt()
         // transparent window: the rounded sheet and the app behind it decide what is seen
-        w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        // the system's keyboard bar (black by default) gets the sheet's bottom colour
-        navGuard.attach(w.decorView, t.panelBottom or 0xFF000000.toInt())
+        val bg = w.decorView.background
+        if (!(bg is android.graphics.drawable.ColorDrawable && bg.color == android.graphics.Color.TRANSPARENT)) {
+            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        }
+        // window nav colour + the system's keyboard bar view (black by default), kept every frame
+        navGuard.attach(w, navColor(t))
         // Android 15+: hide the system-drawn IME navigation bar (its black background); the
         // keyboard paints that area itself.
         if (Build.VERSION.SDK_INT >= 35) try {
             w.insetsController?.hide(android.view.WindowInsets.Type.captionBar())
         } catch (_: Exception) {
         }
-        // see-through sheet: blur whatever the app shows behind the keyboard (Android 12+)
-        if (Build.VERSION.SDK_INT >= 31) try {
-
-            // works the same with the glass effect switched off
-            val blur = if (t.panelAlpha < 0.98f) (t.params.blur * 3f * t.dp + (if (t.frosted) 24f * t.dp else 0f)).toInt() else 0
-            w.setBackgroundBlurRadius(blur)
-        } catch (_: Exception) {
-        }
+        applyWindowBlur(t, force = false)
         if (Build.VERSION.SDK_INT >= 30) {
             w.insetsController?.setSystemBarsAppearance(
                 if (t.dark) 0 else WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
@@ -390,6 +421,39 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             w.decorView.systemUiVisibility = if (t.dark) flags and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
             else flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         }
+    }
+
+    /**
+     * See-through sheet: blur whatever the app shows behind the keyboard (Android 12+), the same
+     * with the glass effect switched off. The system can drop the blur when the window is laid
+     * out again (it did on the 123 key), so [force] sets it anew instead of trusting the old value.
+     */
+    private fun applyWindowBlur(t: GlassTheme, force: Boolean) {
+        if (Build.VERSION.SDK_INT < 31) return
+        val w = window?.window ?: return
+        try {
+            val blur = if (t.panelAlpha < 0.98f) (t.params.blur * 3f * t.dp + (if (t.frosted) 24f * t.dp else 0f)).toInt() else 0
+            if (force && blur > 0) w.setBackgroundBlurRadius(0)
+            w.setBackgroundBlurRadius(blur)
+        } catch (_: Exception) {
+        }
+    }
+
+    private val reassertRunnable = Runnable { reassertWindow() }
+
+    /** After anything that lays the keyboard window out again: same nav colour, same blur. */
+    private fun scheduleReassert() {
+        main.removeCallbacks(reassertRunnable)
+        main.post(reassertRunnable)
+        main.postDelayed(reassertRunnable, 180)
+        main.postDelayed(reassertRunnable, 650)
+    }
+
+    private fun reassertWindow() {
+        val t = theme ?: return
+        if (root == null || !isInputViewShown) return
+        window?.window?.let { navGuard.attach(it, navColor(t)) }
+        applyWindowBlur(t, force = true)
     }
 
     /** The keyboard as it looks now (sheet + suggestions + keys) at [scale]: the picker's glass shows it. */
@@ -416,6 +480,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         super.onWindowShown()
         // re-apply every time the keyboard appears (the system may reset it in between)
         theme?.let { styleNavBar(it) }
+        scheduleReassert()
         val r = root ?: return
         r.post { r.playOpen(prefs.openAnim, prefs.openMs) }
     }
@@ -438,6 +503,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val langs = enabledLangs()
         if (lang !in langs) lang = langs[0]
         applyTheme()
+        if (VoiceActivity.pending != null) main.postDelayed({ takeVoiceResult() }, 250)
 
         val type = info.inputType
         val cls = type and InputType.TYPE_MASK_CLASS
@@ -520,6 +586,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        if (::gifBar.isInitialized) endGifSearch()
         if (::kb.isInitialized) kb.cancelAll()
         main.removeCallbacks(saveRunnable)
         worker.execute { saveDicts() }
@@ -551,6 +618,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         }
         kb.shift = if (kind == LayoutKind.LETTERS) shift else 0
         overlay.invalidateBackdrop()
+        scheduleReassert()
         if (kind == LayoutKind.LETTERS) updateShift()
     }
 
@@ -565,6 +633,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private fun letterRows() = Layouts.letters(hu, prefs.accentRow, field, prefs.numberRow, prefs.periodKey).rows.size
 
     private fun onTool(id: Int) {
+        endGifSearch()
         // a tool whose panel is open switches back to the keys (like Gboard)
         if (id == bar.activeTool) {
             showKeys()
@@ -593,8 +662,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         v.animate().alpha(1f).translationY(0f).setDuration(Anim.ms(240f).toLong()).start()
     }
 
-    private fun showGifs() {
-        val word = extractWord(textBefore())
+    private fun showGifs(query: String? = null) {
+        val word = query ?: extractWord(textBefore())
         gifPanel.fixedHeight = if (kb.visibility == View.VISIBLE) kb.height else maxOf(kb.height, emoji.height, clipPanel.height)
         gifPanel.hungarian = hu
         hidePanels()
@@ -659,7 +728,52 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         fadeIn(clipPanel)
     }
 
+    // ------------------------------------------------------------------ GIF search
+
+    /** Search field tapped: the letter keys type into the search bar above them. */
+    private fun startGifSearch(current: String) {
+        gifQuery = StringBuilder(current)
+        hidePanels()
+        bar.activeTool = -1
+        bar.visibility = View.GONE
+        gifBar.hungarian = hu
+        gifBar.text = current
+        gifBar.visibility = View.VISIBLE
+        if (layoutKind != LayoutKind.LETTERS) setLayout(LayoutKind.LETTERS)
+        shift = 0
+        kb.shift = 0
+        kb.visibility = View.VISIBLE
+        fadeIn(kb)
+    }
+
+    private fun gifType(text: String) {
+        val q = gifQuery ?: return
+        if (q.length >= 60) return
+        q.append(text)
+        gifBar.text = q.toString()
+        if (layoutKind != LayoutKind.LETTERS && (text == " " || text == "'")) setLayout(LayoutKind.LETTERS)
+        if (shift == 1 && layoutKind == LayoutKind.LETTERS) {
+            shift = 0
+            kb.shift = 0
+        }
+    }
+
+    private fun runGifSearch() {
+        val q = gifQuery?.toString()?.trim() ?: return
+        endGifSearch()
+        showGifs(q)
+    }
+
+    private fun endGifSearch() {
+        if (gifQuery == null) return
+        gifQuery = null
+        gifBar.visibility = View.GONE
+        bar.visibility = View.VISIBLE
+        if (layoutKind == LayoutKind.LETTERS) updateShift()
+    }
+
     private fun showKeys() {
+        endGifSearch()
         val wasEmoji = emoji.visibility == View.VISIBLE || clipPanel.visibility == View.VISIBLE || gifPanel.visibility == View.VISIBLE
         hidePanels()
         bar.activeTool = -1
@@ -892,6 +1006,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     override fun onText(text: String) {
+        if (gifQuery != null) {
+            gifType(text)
+            return
+        }
         val ic = currentInputConnection ?: return
         if (text.length == 1 && isSeparator(text[0])) {
             var t = text
@@ -921,6 +1039,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     override fun onSpace() {
+        if (gifQuery != null) {
+            gifType(" ")
+            return
+        }
         val ic = currentInputConnection ?: return
         val now = SystemClock.uptimeMillis()
         val before = textBefore(2)
@@ -943,6 +1065,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     override fun onEnter() {
+        if (gifQuery != null) {
+            runGifSearch()
+            return
+        }
         val ic = currentInputConnection ?: return
         autoSpace = false
         if (enterAction != EditorInfo.IME_ACTION_NONE) {
@@ -956,6 +1082,14 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     override fun onDelete(repeat: Int) {
+        val q = gifQuery
+        if (q != null) {
+            if (q.isNotEmpty()) {
+                if (repeat > 18) q.setLength(0) else q.setLength(q.length - 1)
+                gifBar.text = q.toString()
+            }
+            return
+        }
         val ic = currentInputConnection ?: return
         cached = null
         autoSpace = false
@@ -1011,7 +1145,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     // ------------------------------------------------------------------ shift & layouts
 
     private fun updateShift() {
-        if (!::kb.isInitialized || layoutKind != LayoutKind.LETTERS || shift == 2) return
+        if (!::kb.isInitialized || layoutKind != LayoutKind.LETTERS || shift == 2 || gifQuery != null) return
         shift = if (shouldCap()) 1 else 0
         kb.shift = shift
     }
@@ -1051,6 +1185,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     override fun onEmoji() {
+        endGifSearch()
         if (kb.height > 0) emoji.fixedHeight = kb.height
         hidePanels()
         bar.activeTool = CandidateBar.TOOL_EMOJI
@@ -1095,9 +1230,15 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private var recognizer: android.speech.SpeechRecognizer? = null
     private var listening = false
 
+    /** A dictation attempt is running (possibly between two recognizers). */
+    private var dictating = false
+
     override fun onMic() {
-        if (listening) {
+        endGifSearch()
+        if (listening || dictating) {
+            dictating = false
             recognizer?.stopListening()
+            if (!listening) stopDictation()
             return
         }
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -1106,22 +1247,19 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             return
         }
         dictationTry = 0
+        dictating = true
         startDictation()
     }
 
-    /** Which recognizer to use: Google's first (best Hungarian support), then the others. */
     /** Marker for the phone's on-device (offline) recognizer, Android 12+. */
     private val onDevice = android.content.ComponentName("ondevice", "ondevice")
 
+    /**
+     * Recognizers to try, best first: Google's speech service (best Hungarian), then the other
+     * Google services, the system default, the on-device recognizer and the rest.
+     */
     private fun recognizers(): List<android.content.ComponentName?> {
         val out = ArrayList<android.content.ComponentName?>()
-        // offline recognizer first: no app binding, no network (as WM Keyboard does)
-        if (Build.VERSION.SDK_INT >= 31 && try {
-                android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
-            } catch (_: Exception) {
-                false
-            }
-        ) out += onDevice
         val services = try {
             packageManager.queryIntentServices(android.content.Intent(android.speech.RecognitionService.SERVICE_INTERFACE), 0)
         } catch (_: Exception) {
@@ -1129,72 +1267,98 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         }
         val names = services.map { android.content.ComponentName(it.serviceInfo.packageName, it.serviceInfo.name) }
         names.filter { it.packageName == "com.google.android.googlequicksearchbox" }.forEach { out += it }
+        names.filter { it.packageName == "com.google.android.tts" && it !in out }.forEach { out += it }
         names.filter { it.packageName.startsWith("com.google") && it !in out }.forEach { out += it }
         out += null // the system default
+        if (Build.VERSION.SDK_INT >= 31 && try {
+                android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+            } catch (_: Exception) {
+                false
+            }
+        ) out += onDevice
         names.filter { it !in out }.forEach { out += it }
         return out
     }
 
     private var dictationTry = 0
-    private var lastDictationError = 0
+    private var dictationOptions: List<android.content.ComponentName?> = emptyList()
     private var dictationLang = true
+    private var dictationStartedAt = 0L
+    private var heardSpeech = false
+    private val dictationErrors = ArrayList<String>()
 
     private fun startDictation() {
-        val options = recognizers()
+        if (dictationTry == 0) {
+            dictationOptions = recognizers()
+            dictationErrors.clear()
+            dictationLang = true
+        }
+        val options = dictationOptions
         if (dictationTry >= options.size) {
-            stopDictation()
-            switchToVoiceIme()
+            dictationFallback()
             return
         }
-        recognizer?.destroy()
+        recognizer?.let {
+            recognizer = null
+            try {
+                it.destroy()
+            } catch (_: Exception) {
+            }
+        }
         val comp = options[dictationTry]
         val rec = try {
             if (comp == onDevice && Build.VERSION.SDK_INT >= 31) android.speech.SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
             else if (comp != null) android.speech.SpeechRecognizer.createSpeechRecognizer(this, comp)
             else android.speech.SpeechRecognizer.createSpeechRecognizer(this)
-        } catch (_: Exception) {
-            dictationTry++
-            startDictation()
+        } catch (e: Exception) {
+            dictationErrors += "${recName(comp)}: ${e.javaClass.simpleName}"
+            nextRecognizer()
             return
         }
         recognizer = rec
+        heardSpeech = false
         rec.setRecognitionListener(object : android.speech.RecognitionListener {
-            override fun onReadyForSpeech(params: android.os.Bundle?) = showDictation(if (hu) "Hallgatlak…" else "Listening…")
-            override fun onBeginningOfSpeech() {}
+            // callbacks of a recognizer that was replaced are ignored
+            private fun current() = listening && recognizer === rec
+            override fun onReadyForSpeech(params: android.os.Bundle?) {
+                if (current()) showDictation(if (hu) "Hallgatlak…" else "Listening…")
+            }
+            override fun onBeginningOfSpeech() {
+                heardSpeech = true
+            }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() = showDictation(if (hu) "Feldolgozás…" else "Processing…")
+            override fun onEndOfSpeech() {
+                if (current()) showDictation(if (hu) "Feldolgozás…" else "Processing…")
+            }
             override fun onError(error: Int) {
-                if (!listening) return
-                lastDictationError = error
-                if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                if (!current()) return
+                val quick = SystemClock.uptimeMillis() - dictationStartedAt < 1500
+                if ((error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && (heardSpeech || !quick)) {
+                    // it worked, only nothing (understandable) was said
                     stopDictation()
+                    Toast.makeText(this@GlassKeyboardService, if (hu) "Nem hallottam semmit – próbáld újra." else "Didn't catch that.", Toast.LENGTH_SHORT).show()
                     return
                 }
-                // language not supported (12/13): try again without asking for a language
-                if ((error == 12 || error == 13) && dictationLang) {
+                // language not supported by a Google service: once more without asking for one
+                if ((error == 12 || error == 13) && dictationLang && comp != onDevice && !hu) {
                     dictationLang = false
                     startDictation()
                     return
                 }
-                // otherwise move on to the next recognizer on the phone
-                dictationLang = true
-                dictationTry++
-                if (dictationTry < recognizers().size) {
-                    startDictation()
-                    return
-                }
-                stopDictation()
-                Toast.makeText(this@GlassKeyboardService, (if (hu) "Diktálás nem sikerült: " else "Dictation failed: ") + errorText(error), Toast.LENGTH_LONG).show()
+                dictationErrors += "${recName(comp)}: ${errorText(error)}"
+                nextRecognizer()
             }
 
             override fun onResults(results: android.os.Bundle?) {
+                if (!current()) return
                 val text = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 stopDictation()
                 if (!text.isNullOrBlank()) insertDictated(text)
             }
 
             override fun onPartialResults(partialResults: android.os.Bundle?) {
+                if (!current()) return
                 val text = partialResults?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 if (!text.isNullOrBlank()) showDictation("🎤 $text")
             }
@@ -1208,17 +1372,75 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                 putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, if (hu) "hu-HU" else "en-US")
             }
             putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
         listening = true
         kb.micActive = true
+        dictationStartedAt = SystemClock.uptimeMillis()
         showDictation(if (hu) "Hallgatlak…" else "Listening…")
         try {
             rec.startListening(intent)
         } catch (e: Exception) {
-            stopDictation()
-            switchToVoiceIme()
+            dictationErrors += "${recName(comp)}: ${e.javaClass.simpleName}"
+            nextRecognizer()
         }
+    }
+
+    private fun nextRecognizer() {
+        dictationLang = true
+        dictationTry++
+        // a short pause lets the previous recognizer release the microphone
+        main.postDelayed({ if (dictating) startDictation() }, 120)
+    }
+
+    private fun recName(c: android.content.ComponentName?) = when {
+        c == null -> "default"
+        c == onDevice -> "offline"
+        else -> c.packageName.substringAfterLast('.')
+    }
+
+    /**
+     * No recognizer worked inside the keyboard: use the phone's voice typing keyboard if there is
+     * one, otherwise the system's voice input screen (the text is typed when it closes).
+     */
+    private fun dictationFallback() {
+        stopDictation()
+        if (dictationErrors.isNotEmpty()) android.util.Log.w("GlassKeyboard", "dictation: " + dictationErrors.joinToString("; "))
+        val screen = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        val hasScreen = try {
+            packageManager.resolveActivity(screen, 0) != null
+        } catch (_: Exception) {
+            false
+        }
+        if (!hasScreen) {
+            if (!switchToVoiceIme()) Toast.makeText(
+                this,
+                (if (hu) "Diktálás nem sikerült: " else "Dictation failed: ") + dictationErrors.joinToString("; ").ifEmpty { "?" },
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        try {
+            startActivity(
+                android.content.Intent(this, VoiceActivity::class.java)
+                    .putExtra(VoiceActivity.EXTRA_HU, hu)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            )
+        } catch (_: Exception) {
+            Toast.makeText(
+                this,
+                (if (hu) "Diktálás nem sikerült: " else "Dictation failed: ") + dictationErrors.joinToString("; ").ifEmpty { "?" },
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    /** Text from the voice input screen: typed as soon as the field is back. */
+    private fun takeVoiceResult() {
+        if (currentInputConnection == null) return
+        val text = VoiceActivity.take() ?: return
+        insertDictated(text)
     }
 
     private fun errorText(e: Int): String = when (e) {
@@ -1237,6 +1459,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     private fun stopDictation() {
         listening = false
+        dictating = false
         if (::kb.isInitialized) kb.micActive = false
         if (::bar.isInitialized) bar.clear()
         scheduleRefresh()
@@ -1262,7 +1485,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         super.onFinishInput()
     }
 
-    private fun switchToVoiceIme() {
+    private fun switchToVoiceIme(): Boolean {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         for (imi in imm.enabledInputMethodList) {
             if (imi.packageName == packageName) continue
@@ -1273,11 +1496,11 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                         @Suppress("DEPRECATION")
                         window?.window?.attributes?.token?.let { imm.setInputMethodAndSubtype(it, imi.id, st) }
                     }
-                    return
+                    return true
                 }
             }
         }
-        Toast.makeText(this, if (hu) "Nincs elérhető beszédfelismerés a telefonon (pl. Google alkalmazás)." else "No speech recognition is available.", Toast.LENGTH_LONG).show()
+        return false
     }
 
     override fun onCursor(dx: Int, dy: Int) {

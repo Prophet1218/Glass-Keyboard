@@ -1,40 +1,61 @@
 package com.example.glasskeyboard
 
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.Window
 
 /**
- * Paints the system's keyboard navigation bar in the keyboard's colour.
+ * Keeps the strip under the keyboard (where the system draws the gesture handle) the keyboard's
+ * own colour.
  *
  * On Android 13+ with gesture navigation the system adds a `NavigationBarFrame` view (hide
- * chevron, keyboard switcher) to the keyboard's own window and fills it with black. The frame is
- * found by class name among the window's views (the way WM Keyboard locates it) and its background
- * is set to [color] before every frame, in case the system paints it black again.
+ * chevron, keyboard switcher) to the keyboard's own window and fills it with black; the window's
+ * navigation bar colour is also reset by the system now and then (e.g. when the keyboard's size
+ * or insets change). Before every frame this checks both and puts the keyboard's colour back. The
+ * frame is found by class name among the window's views (the way WM Keyboard locates it) and
+ * searched again when the system replaced it.
  */
 class NavBarGuard {
     private var frame: View? = null
+    private var decor: ViewGroup? = null
+    private var window: Window? = null
     private var observer: ViewTreeObserver? = null
     var color: Int = 0
+        private set
     private val onPreDraw = ViewTreeObserver.OnPreDrawListener {
         apply()
         true
     }
 
-    fun attach(decor: View?, color: Int) {
+    fun attach(window: Window, color: Int) {
         this.color = color
-        val d = decor as? ViewGroup ?: return
-        val found = find(d, 0)
-        if (found !== frame) {
+        this.window = window
+        val d = window.decorView as? ViewGroup ?: return
+        if (d !== decor) {
             observer?.takeIf { it.isAlive }?.removeOnPreDrawListener(onPreDraw)
-            frame = found
-            observer = if (found != null) d.viewTreeObserver.also { it.addOnPreDrawListener(onPreDraw) } else null
+            decor = d
+            observer = d.viewTreeObserver.also { it.addOnPreDrawListener(onPreDraw) }
+            frame = null
         }
         apply()
     }
 
     private fun apply() {
-        val f = frame ?: return
+        val d = decor ?: return
+        val w = window
+        if (w != null) {
+            @Suppress("DEPRECATION")
+            if (w.navigationBarColor != color) w.navigationBarColor = color
+            if (Build.VERSION.SDK_INT >= 29 && w.isNavigationBarContrastEnforced) w.isNavigationBarContrastEnforced = false
+        }
+        var f = frame
+        if (f == null || !f.isAttachedToWindow || f.rootView !== d) {
+            f = find(d, 0)
+            frame = f
+        }
+        if (f == null) return
         val bg = f.background
         if (bg is android.graphics.drawable.ColorDrawable && bg.color == color) return
         f.setBackgroundColor(color)
@@ -45,7 +66,7 @@ class NavBarGuard {
             val c = g.getChildAt(i)
             if (isFrame(c)) return c
         }
-        if (depth >= 3) return null
+        if (depth >= 4) return null
         for (i in 0 until g.childCount) {
             val c = g.getChildAt(i) as? ViewGroup ?: continue
             if (c.id == android.R.id.inputArea || c.id == android.R.id.extractArea) continue
