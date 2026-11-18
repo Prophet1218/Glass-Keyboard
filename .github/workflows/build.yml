@@ -1,0 +1,55 @@
+# Minden feltöltés (push) után a GitHub lefordítja az APK-t, és kiadásként (Release) közzéteszi,
+# így telefonról közvetlenül letölthető és telepíthető: a repó "Releases" részében a legfrissebb.
+name: APK építés
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: APK fordítása
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Verzió
+        id: ver
+        run: echo "name=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+
+      - name: Átnevezés
+        run: cp app/build/outputs/apk/release/app-release.apk GlassKeyboard-${{ steps.ver.outputs.name }}.apk
+
+      - name: Régi kiadások törlése (csak a legújabb marad)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for t in $(gh release list --limit 300 --json tagName -q '.[].tagName'); do
+            if [ "$t" != "v${{ steps.ver.outputs.name }}" ]; then
+              gh release delete "$t" --yes --cleanup-tag || true
+            fi
+          done
+
+      - name: Kiadás (letölthető APK)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}
+          name: Glass Keyboard ${{ steps.ver.outputs.name }}
+          files: GlassKeyboard-${{ steps.ver.outputs.name }}.apk
+          body_path: RELEASE_NOTES.md
+          overwrite_files: true
+          make_latest: true
