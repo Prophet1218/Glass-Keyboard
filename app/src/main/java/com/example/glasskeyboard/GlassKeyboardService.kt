@@ -257,7 +257,6 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             window?.window?.let { w ->
                 // without this flag the system paints a black "legacy" bar under the keyboard
                 w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                w.setDecorFitsSystemWindows(false)
                 w.isNavigationBarContrastEnforced = false
             }
             r.setOnApplyWindowInsetsListener { _, insets ->
@@ -288,10 +287,14 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         // same colour as the bottom of the glass sheet
         @Suppress("DEPRECATION")
         w.navigationBarColor = t.panelBottom or 0xFF000000.toInt()
+        // The window background shows wherever the system leaves the bottom (gesture) bar area
+        // to the keyboard: give it the colour of the bottom of the glass sheet instead of black.
+        w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(t.panelBottom))
         // see-through sheet: blur whatever the app shows behind the keyboard (Android 12+)
         if (Build.VERSION.SDK_INT >= 31) try {
-            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-            val blur = if (t.panelAlpha < 0.98f && !t.solid) (t.params.blur * 3f * t.dp + (if (t.frosted) 24f * t.dp else 0f)).toInt() else 0
+
+            // works the same with the glass effect switched off
+            val blur = if (t.panelAlpha < 0.98f) (t.params.blur * 3f * t.dp + (if (t.frosted) 24f * t.dp else 0f)).toInt() else 0
             w.setBackgroundBlurRadius(blur)
         } catch (_: Exception) {
         }
@@ -313,6 +316,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     override fun onWindowShown() {
         super.onWindowShown()
+        // re-apply every time the keyboard appears (the system may reset it in between)
+        theme?.let { styleNavBar(it) }
         val r = root ?: return
         r.post { r.playOpen(prefs.openAnim, prefs.openMs) }
     }

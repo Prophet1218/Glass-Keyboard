@@ -22,6 +22,8 @@ data class GlassParams(
     val keyDarken: Int = 0,
     val rim: Boolean = true,
     val convex: Boolean = false,
+    /** selection capsules (suggestion pill, accent picker): 0 liquid glass, 1 frosted glass */
+    val lensStyle: Int = 0,
 )
 
 /** All settings of the keyboard in one place. */
@@ -87,11 +89,12 @@ class Prefs(context: Context) {
         keyDarken = sp.getInt(K_KEY_DARK, 0),
         rim = b(K_RIM, true),
         convex = b(K_CONVEX, false),
+        lensStyle = sp.getInt(K_LENS_STYLE, 0),
     )
 
     fun resetGlass() {
         sp.edit().remove(K_GLASS).remove(K_THEME).remove(K_HUE).remove(K_HUE_STRENGTH).remove(K_BLUR)
-            .remove(K_REFR_H).remove(K_REFR_OFF).remove(K_DISP).remove(K_GLASS_DARK).remove(K_KEY_DARK).remove(K_RIM).remove(K_CONVEX)
+            .remove(K_REFR_H).remove(K_REFR_OFF).remove(K_DISP).remove(K_GLASS_DARK).remove(K_KEY_DARK).remove(K_RIM).remove(K_CONVEX).remove(K_LENS_STYLE)
             .remove(K_PANEL_OPACITY).remove(K_KEY_OPACITY).apply()
     }
 
@@ -154,5 +157,6 @@ class Prefs(context: Context) {
         const val K_KEY_DARK = "key_dark"
         const val K_RIM = "glass_rim"
         const val K_CONVEX = "glass_convex"
+        const val K_LENS_STYLE = "lens_style"
     }
 }

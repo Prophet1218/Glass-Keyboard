@@ -67,10 +67,13 @@ class LiquidLens(private val dp: Float) {
         // capsules the rim band and its bend are scaled down so text under the glass stays clean.
         val small = minOf(r.width(), r.height()) / 2f
         val band = minOf(t.lensHeight, small * 0.42f)
-        val amount = if (t.frosted) 0f else t.lensAmount * (band / maxOf(t.lensHeight, 1f)) * 0.45f
+        val frost = t.lensFrosted
+        val amount = if (frost) 0f else t.lensAmount * (band / maxOf(t.lensHeight, 1f)) * 0.45f
+        // frosted capsule: milky body, no refraction, softened view
+        val body = if (frost && !t.solid) (if (t.dark) 0x38FFFFFF else 0x8CFFFFFF.toInt()) else tint
         drawRaw(
-            c, r, radius, mag, band, amount, t.lensDispersion, t.lensBlur, t.params.rim, t.params.convex,
-            tint, t.dark, alpha, shadow, t.solid,
+            c, r, radius, if (frost) 1f else mag, band, amount, if (frost) 0f else t.lensDispersion, t.lensBlur,
+            t.params.rim, t.params.convex, body, t.dark, alpha, shadow, t.solid,
         )
     }
 

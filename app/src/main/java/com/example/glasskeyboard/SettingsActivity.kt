@@ -137,6 +137,7 @@ class SettingsActivity : Activity() {
         val glass = card("Üveghatás")
         glass.addView(choiceRow("Üveg típusa", arrayOf("Folyékony üveg (fénytörés)", "Matt üveg (elmosás, fénytörés nélkül)", "Kikapcsolva (tömör felületek, üveg nélkül)"), Prefs.K_GLASS, 0))
         glass.addView(choiceRow("Üveg árnyalata", arrayOf("Rendszer szerint (világos / sötét)", "Világos", "Sötét", "Átlátszó"), Prefs.K_THEME, 0))
+        glass.addView(choiceRow("Kijelölő kapszula (javaslat és ékezetválasztó)", arrayOf("Liquid glass (fénytörés)", "Frosted glass (matt, elmosott)"), Prefs.K_LENS_STYLE, 0))
         glass.addView(hueRow("Üveg színe", Prefs.K_HUE, 210))
         glass.addView(seekRow("Szín erőssége (0 = színtelen üveg)", Prefs.K_HUE_STRENGTH, 0, 70, 0, ""))
         glass.addView(seekRow("Elmosás", Prefs.K_BLUR, 0, 24, 2, ""))

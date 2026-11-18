@@ -1,4 +1,6 @@
-## Glass Keyboard 0.0.8
+## Glass Keyboard 0.0.9
 
-- **Dupla kép megszüntetve** az üvegkapszulákban: az elmosás okozta szellemképet (eltolt másolatok) kivettem; a folyékony üveg alatt a szöveg éles, matt üvegnél valódi, egyenletes elmosás van
-- **Navigációs sáv:** a rendszer nem fest többé fekete sávot a billentyűzet alá, a sáv a billentyűzet színét kapja
+- **Navigációs sáv:** új megoldás – a billentyűzet ablakának háttere és a sáv színe minden megjelenéskor a billentyűzet aljának színét kapja
+- **Szóköz-kurzor:** a gombok feliratai nem tűnnek el a kurzor mozgatása közben, csak kicsit halványabbak
+- **Kijelölő kapszula anyaga választható:** Liquid glass vagy Frosted glass – egy beállítás állítja a javaslat kapszulát és az ékezetválasztót együtt
+- **Háttér elmosás** kikapcsolt üvegfelületnél is működik

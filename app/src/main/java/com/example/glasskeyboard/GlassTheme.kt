@@ -40,8 +40,11 @@ class GlassTheme(
     val lensHeight get() = params.refrHeight / 3f * dp
     val lensAmount get() = params.refrOffset / 4f * dp * (if (params.convex) 1.5f else 1f)
     val lensDispersion get() = params.dispersion / 50f
-    /** Only the matt (frosted) glass blurs what is under a lens; clear glass keeps text sharp. */
-    val lensBlur get() = if (frosted) (1.5f + params.blur * 0.25f) * dp else 0f
+    /** Selection capsules made of frosted (matt) glass instead of liquid glass. */
+    val lensFrosted get() = params.lensStyle == 1
+
+    /** Only frosted capsules blur what is under them; liquid glass keeps text sharp. */
+    val lensBlur get() = if (lensFrosted) (1.6f + params.blur * 0.2f) * dp else 0f
     val dp = context.resources.displayMetrics.density
     val sp = dp * context.resources.configuration.fontScale
 

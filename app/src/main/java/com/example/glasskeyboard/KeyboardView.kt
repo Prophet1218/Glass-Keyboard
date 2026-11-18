@@ -356,7 +356,13 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             t.fill.alpha = 255
         }
         t.drawKey(c, r, if (style == 2) GlassTheme.lerpColor(color, if (k.special) t.keySpecial else t.key, p * 0.7f) else color)
-        if (!cursorMode) drawLabel(c, k, t, r)
+        // labels stay visible in trackpad (space-bar cursor) mode, just a little softer
+        if (cursorMode) {
+            val keep = labelAlpha
+            labelAlpha = labelAlpha * 3 / 5
+            drawLabel(c, k, t, r)
+            labelAlpha = keep
+        } else drawLabel(c, k, t, r)
         c.restore()
     }
 
