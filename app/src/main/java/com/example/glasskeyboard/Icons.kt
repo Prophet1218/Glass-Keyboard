@@ -109,4 +109,49 @@ object Icons {
         p.lineTo(cx + s * 0.35f, cy - s * 0.15f)
         c.drawPath(p, stroke)
     }
+
+    fun chevronRight(c: Canvas, cx: Float, cy: Float, s: Float, stroke: Paint) {
+        p.reset()
+        p.moveTo(cx - s * 0.18f, cy - s * 0.38f)
+        p.lineTo(cx + s * 0.2f, cy)
+        p.lineTo(cx - s * 0.18f, cy + s * 0.38f)
+        c.drawPath(p, stroke)
+    }
+
+    fun clipboard(c: Canvas, cx: Float, cy: Float, s: Float, stroke: Paint) {
+        r.set(cx - s * 0.34f, cy - s * 0.36f, cx + s * 0.34f, cy + s * 0.46f)
+        c.drawRoundRect(r, s * 0.08f, s * 0.08f, stroke)
+        r.set(cx - s * 0.16f, cy - s * 0.48f, cx + s * 0.16f, cy - s * 0.28f)
+        c.drawRoundRect(r, s * 0.05f, s * 0.05f, stroke)
+        c.drawLine(cx - s * 0.18f, cy - s * 0.02f, cx + s * 0.18f, cy - s * 0.02f, stroke)
+        c.drawLine(cx - s * 0.18f, cy + s * 0.18f, cx + s * 0.1f, cy + s * 0.18f, stroke)
+    }
+
+    fun gear(c: Canvas, cx: Float, cy: Float, s: Float, stroke: Paint) {
+        c.drawCircle(cx, cy, s * 0.15f, stroke)
+        c.drawCircle(cx, cy, s * 0.31f, stroke)
+        for (i in 0 until 8) {
+            val a = Math.PI * i / 4
+            val ca = Math.cos(a).toFloat()
+            val sa = Math.sin(a).toFloat()
+            c.drawLine(cx + ca * s * 0.31f, cy + sa * s * 0.31f, cx + ca * s * 0.46f, cy + sa * s * 0.46f, stroke)
+        }
+    }
+
+    /** keyboard with a down chevron (hide keyboard) */
+    fun hideKeyboard(c: Canvas, cx: Float, cy: Float, s: Float, stroke: Paint) {
+        r.set(cx - s * 0.46f, cy - s * 0.42f, cx + s * 0.46f, cy + s * 0.14f)
+        c.drawRoundRect(r, s * 0.08f, s * 0.08f, stroke)
+        for (row in 0..1) for (k in 0..3) {
+            val x = cx - s * 0.27f + k * s * 0.18f
+            val y = cy - s * 0.26f + row * s * 0.15f
+            c.drawPoint(x, y, stroke)
+        }
+        c.drawLine(cx - s * 0.18f, cy - s * 0.02f, cx + s * 0.18f, cy - s * 0.02f, stroke)
+        p.reset()
+        p.moveTo(cx - s * 0.14f, cy + s * 0.28f)
+        p.lineTo(cx, cy + s * 0.42f)
+        p.lineTo(cx + s * 0.14f, cy + s * 0.28f)
+        c.drawPath(p, stroke)
+    }
 }

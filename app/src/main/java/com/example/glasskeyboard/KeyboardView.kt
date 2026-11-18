@@ -63,6 +63,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         set(v) {
             if (field != v) {
                 field = v
+                overlay.invalidateBackdrop()
                 invalidate()
             }
         }
@@ -127,8 +128,8 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
     private fun cursorDim(now: Long): Float {
         val target = if (cursorMode) 1f else 0f
         if (!animations) return target
-        val t = ((now - cursorAt) / Anim.ms(170f)).coerceIn(0f, 1f)
-        val e = 1f - (1f - t) * (1f - t)
+        val t = ((now - cursorAt) / Anim.ms(380f)).coerceIn(0f, 1f)
+        val e = t * t * (3f - 2f * t) // smoothstep: soft start and soft end
         return cursorFrom + (target - cursorFrom) * e
     }
 
@@ -347,7 +348,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             drawStripIcon(canvas, micKey, micIcon, pressProgress(micKey, micKey in pressed, now), t)
         }
         t.icon.color = t.text
-        if (animations && SystemClock.uptimeMillis() - cursorAt < Anim.ms(180f)) animating = true
+        if (animations && SystemClock.uptimeMillis() - cursorAt < Anim.ms(400f)) animating = true
         if (animating || releaseAt.isNotEmpty()) postInvalidateOnAnimation()
     }
 

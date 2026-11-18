@@ -33,6 +33,20 @@ class PopupOverlay(context: Context) : View(context) {
     var popupStyle = 0
     /** long-press picker material: 0 liquid glass, 1 frosted glass, 2 solid */
     var popupGlass = 0
+    /** typing balloon material: 0 liquid glass, 1 frosted glass, 2 solid */
+    var previewGlass = 2
+    private var backdropDirty = true
+
+    /** The keyboard changed (page, shift, theme): take a new snapshot next time glass needs it. */
+    fun invalidateBackdrop() {
+        backdropDirty = true
+    }
+
+    private fun ensureBackdrop() {
+        if (!backdropDirty && backSharp != null) return
+        backdropDirty = false
+        captureBackdrop()
+    }
     /** renders the keyboard as it looks right now, at the given scale (what the picker's glass shows) */
     var backdrop: ((Float) -> Bitmap?)? = null
     private var backSharp: Bitmap? = null
@@ -133,6 +147,7 @@ class PopupOverlay(context: Context) : View(context) {
         // in quick succession (fast typing) the next balloon starts half-grown: snappy, not jumpy
         val visible = previewText != null && preview.hideAt == 0L
         b.shownAt = if (visible || n - lastPreviewEnd < 120) n - Anim.ms(55f).toLong() else n
+        if (previewGlass != 2) ensureBackdrop()
         b.hideAt = 0
         previewText = text
         postInvalidateOnAnimation()
@@ -177,7 +192,7 @@ class PopupOverlay(context: Context) : View(context) {
         lensV = 0f
         lensPress = 0f
         lensFrame = now()
-        captureBackdrop()
+        if (popupGlass != 2) ensureBackdrop()
         renderPopupContent(t)
         postInvalidateOnAnimation()
         return floatArrayOf(itemsLeft - o.x, itemW, if (reversed) 1f else 0f)
@@ -219,7 +234,6 @@ class PopupOverlay(context: Context) : View(context) {
     private fun captureBackdrop() {
         backSharp = null
         backSoft = null
-        if (popupGlass == 2) return
         val sharp = try {
             backdrop?.invoke(0.5f)
         } catch (_: Exception) {
@@ -235,25 +249,25 @@ class PopupOverlay(context: Context) : View(context) {
 
     private fun liquidVeil(t: GlassTheme): Int = if (t.dark) 0x8C3A3B40.toInt() else 0x99FFFFFF.toInt()
 
-    private fun popupTint(t: GlassTheme): Int = when (popupGlass) {
+    private fun popupTint(t: GlassTheme, mat: Int = popupGlass): Int = when (mat) {
         0 -> if (t.dark) 0x66595A60 else 0x80FFFFFF.toInt()
         1 -> if (t.dark) 0xA6505156.toInt() else 0xB8F5F6F9.toInt()
         else -> t.popup
     }
 
     /** The picker body: frosted (blurred keys + milky tint) or the glass base of liquid. */
-    private fun drawPopupBody(c: Canvas, t: GlassTheme, shape: Path, alpha: Float) {
+    private fun drawPopupBody(c: Canvas, t: GlassTheme, shape: Path, alpha: Float, mat: Int = popupGlass) {
         val soft = backSoft
         c.save()
         c.clipPath(shape)
-        if (soft != null && popupGlass != 2) {
+        if (soft != null && mat != 2) {
             val sc = width.toFloat() / soft.width
             backMatrix.setScale(sc, sc)
             bmpPaint.alpha = (255 * alpha).toInt()
             c.drawBitmap(soft, backMatrix, bmpPaint)
         }
-        paint.color = popupTint(t)
-        paint.alpha = (Color.alpha(popupTint(t)) * alpha).toInt()
+        paint.color = popupTint(t, mat)
+        paint.alpha = (Color.alpha(popupTint(t, mat)) * alpha).toInt()
         c.drawPaint(paint)
         c.restore()
     }
@@ -474,16 +488,17 @@ class PopupOverlay(context: Context) : View(context) {
         paint.alpha = (Color.alpha(t.popupShadow) * st[3]).toInt()
         canvas.drawPath(b.shadow, paint)
         canvas.restore()
-        if (b === popup && popupGlass != 2 && backSoft != null) {
-            drawPopupBody(canvas, t, b.shape, st[3])
-            if (popupGlass == 0) {
+        val mat = if (b === popup) popupGlass else previewGlass
+        if (mat != 2 && backSoft != null) {
+            drawPopupBody(canvas, t, b.shape, st[3], mat)
+            if (mat == 0) {
                 // liquid: the bubble itself is a lens over the keys, bending them at its rim
                 backSharp?.let { boxLens.setContent(it, 0f, 0f, 2f) }
                 val rad = b.box.height() / 2f
                 boxLens.drawRaw(
                     canvas, b.box, rad, 1f, minOf(t.lensHeight, rad * 0.8f), t.lensAmount * 0.8f,
                     t.lensDispersion, 0f, t.params.rim, t.params.convex,
-                    popupTint(t), t.dark, st[3], shadow = false,
+                    popupTint(t, mat), t.dark, st[3], shadow = false,
                 )
                 // a light veil over the refracted keys keeps the letters readable
                 paint.color = liquidVeil(t)

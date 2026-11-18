@@ -1,7 +1,8 @@
-## Glass Keyboard 0.0.10
+## Glass Keyboard 0.0.11
 
-- **Diktálás:** a mikrofon gombbal közvetlenül a billentyűzetben diktálhatsz (magyarul vagy angolul, a kiválasztott nyelven); a javaslatsáv élőben mutatja a felismert szöveget, a mikrofon közben pulzál. Első használatkor egyszer engedélyt kér a mikrofonhoz
-- **Hosszú nyomás menü anyaga választható:** Liquid glass (a mögötte lévő gombok fénytörve átlátszanak), Frosted glass (elmosott, matt) vagy tömör
-- **Szóköz-kurzor:** a feliratok áttűnéssel halványulnak el és vissza
-- **Navigációs sáv:** új próbálkozás – Android 15+ alatt a rendszer saját (fekete) billentyűzet-navigációs sávja elrejtve, a billentyűzet rajzolja a helyét
-- **Szögletes sarkok javítva** a lekerekített billentyűzet mögött
+- **Eszköztár a javaslatsávban** (mint a Gboardon): amíg nem gépelsz, emoji, vágólap, nyelvváltás, billentyűzet elrejtése és beállítások gomb; gépeléskor szójavaslatok jönnek, a › gombbal az eszköztár előhozható. Következő szó csak a tőled tanult szavakból
+- **Vágólap panel:** a kimásolt szövegek listája, koppintásra beilleszti, hosszan nyomva törli
+- **Betűbuborék anyaga választható:** Liquid glass, Frosted glass vagy tömör
+- **Diktálás javítva:** a Google beszédfelismerőjét választja elsőként, hiba esetén a következőt próbálja, és érthető hibaüzenetet ad
+- **Szóköz-kurzor:** hosszabb, lágyabb halványulás és visszavilágosodás
+- **Navigációs sáv:** saját ablaktéma a billentyűzetnek (áttetsző navigációs réteg nélkül)

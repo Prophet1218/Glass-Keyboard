@@ -731,9 +731,23 @@ public final class Engine {
 
     /** Words likely to follow [prev] (learned bigrams first, then common fallbacks). */
     public List<String> predict(String prev, boolean sentenceStart, int max) {
+        return predict(prev, sentenceStart, max, true);
+    }
+
+    /** @param fallback add common words when nothing was learned for [prev] */
+    public List<String> predict(String prev, boolean sentenceStart, int max, boolean withFallback) {
         ArrayList<String> out = new ArrayList<>();
         if (prev != null && !prev.isEmpty()) {
             for (String w : user.next(prev, max)) out.add(properForm(w));
+        }
+        if (!withFallback) {
+            if (sentenceStart) {
+                for (int i = 0; i < out.size(); i++) {
+                    String w = out.get(i);
+                    out.set(i, w.substring(0, 1).toUpperCase(locale) + w.substring(1));
+                }
+            }
+            return out;
         }
         String[] fallback;
         if (sentenceStart) {

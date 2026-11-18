@@ -213,16 +213,39 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private val saveRunnable = Runnable { worker.execute { saveDicts() } }
     private val restoreSpaceLabel = Runnable { if (::kb.isInitialized) kb.spaceLabel = "" }
 
+    private lateinit var clips: ClipStore
+    private lateinit var clipPanel: ClipboardPanel
+    private var clipListener: android.content.ClipboardManager.OnPrimaryClipChangedListener? = null
+
     override fun onCreate() {
+        // own window theme: draws its own system-bar backgrounds, no translucent/black nav scrim
+        setTheme(R.style.ImeTheme)
         super.onCreate()
         prefs = Prefs(this)
         lang = prefs.language
         @Suppress("DEPRECATION")
         vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         audio = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        clips = ClipStore(prefs)
+        // remember what gets copied (the active keyboard is allowed to read the clipboard)
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        if (cm != null) {
+            val l = android.content.ClipboardManager.OnPrimaryClipChangedListener { captureClip(cm) }
+            cm.addPrimaryClipChangedListener(l)
+            clipListener = l
+        }
+    }
+
+    private fun captureClip(cm: android.content.ClipboardManager? = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager) {
+        try {
+            val text = cm?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+            if (!text.isNullOrBlank()) clips.add(text)
+        } catch (_: Exception) {
+        }
     }
 
     override fun onDestroy() {
+        clipListener?.let { (getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)?.removePrimaryClipChangedListener(it) }
         recognizer?.destroy()
         saveDicts()
         worker.shutdown()
@@ -271,6 +294,14 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val area = FrameLayout(this)
         area.addView(kb, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         area.addView(emoji, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        clipPanel = ClipboardPanel(this, clips, { text ->
+            currentInputConnection?.commitText(text, 1)
+            showKeys()
+            afterInput()
+        }, { showKeys() })
+        clipPanel.visibility = View.GONE
+        area.addView(clipPanel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        bar.onTool = { onTool(it) }
         val panel = LinearLayout(this)
         panel.orientation = LinearLayout.VERTICAL
         panel.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -307,6 +338,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         kb.theme = t
         bar.theme = t
         emoji.theme = t
+        clipPanel.theme = t
         overlay.theme = t
         styleNavBar(t)
     }
@@ -314,6 +346,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private fun styleNavBar(t: GlassTheme) {
         val w = window?.window ?: return
         w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        @Suppress("DEPRECATION")
+        w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
         if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
         // same colour as the bottom of the glass sheet
         @Suppress("DEPRECATION")
@@ -434,8 +468,11 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         overlay.previewStyle = prefs.previewAnim
         overlay.popupStyle = prefs.popupAnim
         overlay.popupGlass = prefs.popupGlass
+        overlay.previewGlass = prefs.previewGlass
+        overlay.invalidateBackdrop()
         bar.animations = prefs.animations
         bar.style = prefs.suggAnim
+        bar.toolbarEnabled = prefs.toolbar
         kb.pressStyle = prefs.pressAnim
         Anim.speed = prefs.animSpeed / 100f
         kb.locale = engine().locale
@@ -503,6 +540,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             LayoutKind.PHONE -> Layouts.phone()
         }
         kb.shift = if (kind == LayoutKind.LETTERS) shift else 0
+        overlay.invalidateBackdrop()
         if (kind == LayoutKind.LETTERS) updateShift()
     }
 
@@ -516,9 +554,36 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     private fun letterRows() = Layouts.letters(hu, prefs.accentRow, field, prefs.numberRow, prefs.periodKey).rows.size
 
-    private fun showKeys() {
-        val wasEmoji = emoji.visibility == View.VISIBLE
+    private fun onTool(id: Int) {
+        when (id) {
+            CandidateBar.TOOL_EMOJI -> onEmoji()
+            CandidateBar.TOOL_CLIPBOARD -> showClipboard()
+            CandidateBar.TOOL_LANGUAGE -> onGlobe()
+            CandidateBar.TOOL_HIDE -> requestHideSelf(0)
+            else -> startActivity(android.content.Intent(this, SettingsActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    private fun showClipboard() {
+        captureClip()
+        clipPanel.fixedHeight = kb.height
+        clipPanel.hungarian = hu
+        clipPanel.refresh()
+        kb.visibility = View.GONE
         emoji.visibility = View.GONE
+        clipPanel.visibility = View.VISIBLE
+        clipPanel.requestLayout()
+        if (prefs.animations) {
+            clipPanel.alpha = 0f
+            clipPanel.translationY = 14 * resources.displayMetrics.density
+            clipPanel.animate().alpha(1f).translationY(0f).setDuration(Anim.ms(240f).toLong()).start()
+        }
+    }
+
+    private fun showKeys() {
+        val wasEmoji = emoji.visibility == View.VISIBLE || clipPanel.visibility == View.VISIBLE
+        emoji.visibility = View.GONE
+        clipPanel.visibility = View.GONE
         kb.visibility = View.VISIBLE
         if (wasEmoji && prefs.animations) {
             kb.alpha = 0f
@@ -605,7 +670,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             }
             val start = sentenceStart(beforeWord)
             worker.execute {
-                val p = eng.predict(prev, start, 3)
+                // only what was learned from you: otherwise the toolbar stays
+                val p = eng.predict(prev, start, 3, false)
                 main.post {
                     if (seq == analyzeSeq) bar.set(p.map { Candidate(it) })
                 }
@@ -958,15 +1024,47 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             startActivity(android.content.Intent(this, MicPermissionActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         }
-        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
-            switchToVoiceIme()
-            return
-        }
+        dictationTry = 0
         startDictation()
     }
 
+    /** Which recognizer to use: Google's first (best Hungarian support), then the others. */
+    private fun recognizers(): List<android.content.ComponentName?> {
+        val out = ArrayList<android.content.ComponentName?>()
+        val services = try {
+            packageManager.queryIntentServices(android.content.Intent(android.speech.RecognitionService.SERVICE_INTERFACE), 0)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val names = services.map { android.content.ComponentName(it.serviceInfo.packageName, it.serviceInfo.name) }
+        names.filter { it.packageName == "com.google.android.googlequicksearchbox" }.forEach { out += it }
+        names.filter { it.packageName.startsWith("com.google") && it !in out }.forEach { out += it }
+        out += null // the system default
+        names.filter { it !in out }.forEach { out += it }
+        return out
+    }
+
+    private var dictationTry = 0
+    private var dictationLang = true
+
     private fun startDictation() {
-        val rec = recognizer ?: android.speech.SpeechRecognizer.createSpeechRecognizer(this).also { recognizer = it }
+        val options = recognizers()
+        if (dictationTry >= options.size) {
+            stopDictation()
+            switchToVoiceIme()
+            return
+        }
+        recognizer?.destroy()
+        val comp = options[dictationTry]
+        val rec = try {
+            if (comp != null) android.speech.SpeechRecognizer.createSpeechRecognizer(this, comp)
+            else android.speech.SpeechRecognizer.createSpeechRecognizer(this)
+        } catch (_: Exception) {
+            dictationTry++
+            startDictation()
+            return
+        }
+        recognizer = rec
         rec.setRecognitionListener(object : android.speech.RecognitionListener {
             override fun onReadyForSpeech(params: android.os.Bundle?) = showDictation(if (hu) "Hallgatlak…" else "Listening…")
             override fun onBeginningOfSpeech() {}
@@ -974,9 +1072,26 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() = showDictation(if (hu) "Feldolgozás…" else "Processing…")
             override fun onError(error: Int) {
+                if (!listening) return
+                if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                    stopDictation()
+                    return
+                }
+                // language not supported (12/13): try again without asking for a language
+                if ((error == 12 || error == 13) && dictationLang) {
+                    dictationLang = false
+                    startDictation()
+                    return
+                }
+                // otherwise move on to the next recognizer on the phone
+                dictationLang = true
+                dictationTry++
+                if (dictationTry < recognizers().size) {
+                    startDictation()
+                    return
+                }
                 stopDictation()
-                if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) return
-                Toast.makeText(this@GlassKeyboardService, if (hu) "Diktálás nem sikerült ($error)" else "Dictation failed ($error)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@GlassKeyboardService, (if (hu) "Diktálás nem sikerült: " else "Dictation failed: ") + errorText(error), Toast.LENGTH_LONG).show()
             }
 
             override fun onResults(results: android.os.Bundle?) {
@@ -994,7 +1109,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         })
         val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, if (hu) "hu-HU" else "en-US")
+            if (dictationLang) {
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, if (hu) "hu-HU" else "en-US")
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, if (hu) "hu-HU" else "en-US")
+            }
             putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
@@ -1007,6 +1125,16 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             stopDictation()
             switchToVoiceIme()
         }
+    }
+
+    private fun errorText(e: Int): String = when (e) {
+        android.speech.SpeechRecognizer.ERROR_NETWORK, android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> if (hu) "nincs internet" else "no network"
+        android.speech.SpeechRecognizer.ERROR_AUDIO -> if (hu) "mikrofon hiba" else "audio error"
+        android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> if (hu) "a beszédfelismerőnek nincs mikrofon engedélye (Google alkalmazás)" else "recognizer lacks mic permission"
+        android.speech.SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> if (hu) "a felismerő foglalt" else "recognizer busy"
+        android.speech.SpeechRecognizer.ERROR_SERVER -> if (hu) "szerverhiba" else "server error"
+        12, 13 -> if (hu) "a nyelv nem támogatott" else "language not supported"
+        else -> (if (hu) "hibakód " else "error ") + e
     }
 
     private fun showDictation(text: String) {

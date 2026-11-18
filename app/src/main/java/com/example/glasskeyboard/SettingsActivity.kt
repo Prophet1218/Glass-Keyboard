@@ -122,6 +122,7 @@ class SettingsActivity : Activity() {
         // ---- typing
         val typing = card("Gépelés")
         typing.addView(switchRow("Automatikus javítás", "Elgépelések és hiányzó ékezetek javítása szóköznél (jo → jó, koszonom → köszönöm). Visszatörléssel visszavonható.", Prefs.K_AUTOCORRECT, true))
+        typing.addView(switchRow("Eszköztár a javaslatsávban", "Amíg nem gépelsz: emoji, vágólap, nyelv, billentyűzet elrejtése, beállítások. Gépeléskor szójavaslatok; a › gombbal előhozható.", Prefs.K_TOOLBAR, true))
         typing.addView(switchRow("Javaslatsáv", "Szójavaslatok és következő szó a billentyűk fölött", Prefs.K_SUGGESTIONS, true))
         typing.addView(switchRow("Szavak tanulása", "Megjegyzi a saját szavaidat és szófordulataidat", Prefs.K_LEARN, true))
         typing.addView(switchRow("Számsor", "Külön számsor (1–0) a betűk fölött", Prefs.K_NUMBER_ROW, false))
@@ -137,6 +138,7 @@ class SettingsActivity : Activity() {
         val glass = card("Üveghatás")
         glass.addView(choiceRow("Üveg típusa", arrayOf("Folyékony üveg (fénytörés)", "Matt üveg (elmosás, fénytörés nélkül)", "Kikapcsolva (tömör felületek, üveg nélkül)"), Prefs.K_GLASS, 0))
         glass.addView(choiceRow("Üveg árnyalata", arrayOf("Rendszer szerint (világos / sötét)", "Világos", "Sötét", "Átlátszó"), Prefs.K_THEME, 0))
+        glass.addView(choiceRow("Betűbuborék anyaga (gépeléskor)", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_PREVIEW_GLASS, 2))
         glass.addView(choiceRow("Hosszú nyomás menü (ékezetválasztó) anyaga", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_POPUP_GLASS, 0))
         glass.addView(choiceRow("Kijelölő kapszula (javaslat és ékezetválasztó)", arrayOf("Liquid glass (fénytörés)", "Frosted glass (matt, elmosott)"), Prefs.K_LENS_STYLE, 0))
         glass.addView(hueRow("Üveg színe", Prefs.K_HUE, 210))

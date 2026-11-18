@@ -35,14 +35,40 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
     var style = 0
     /** called with the centre of a tapped suggestion (for the chaos burst) */
     var onTapAt: ((Float, Float) -> Unit)? = null
+    /** Toolbar (emoji, clipboard, language, hide, settings) while nothing is being typed. */
+    var toolbarEnabled = true
+        set(v) {
+            field = v
+            invalidate()
+        }
+    var onTool: ((Int) -> Unit)? = null
+    /** the toolbar was opened with the › button while suggestions are showing */
+    private var forced = false
+    private var toolLevel = 1f
+    private var toolFrame = 0L
+    private var toolPressed = -1
+    private val chevW get() = 40f * dp
+
+    companion object {
+        const val TOOL_EMOJI = 0
+        const val TOOL_CLIPBOARD = 1
+        const val TOOL_LANGUAGE = 2
+        const val TOOL_HIDE = 3
+        const val TOOL_SETTINGS = 4
+        private const val TOOLS = 5
+    }
+
+    private fun hasItems() = items.any { it != null }
+    private fun toolbarWanted() = toolbarEnabled && (forced || !hasItems())
+    private fun sugLeft() = if (toolbarEnabled) chevW else 0f
     private val lens = LiquidLens(resources.displayMetrics.density)
     private var layer: android.graphics.Bitmap? = null
     private val lensRect = RectF()
     private val clipPath = android.graphics.Path()
     private val paintBmp = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
 
-    private fun pillRect(i: Int, w: Float, h: Float) {
-        val l = i * w
+    private fun pillRect(i: Int, left: Float, w: Float, h: Float) {
+        val l = left + i * w
         lensRect.set(l + 6 * dp, 6 * dp, l + w - 6 * dp, h - 5 * dp)
     }
 
@@ -82,6 +108,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         }
         old = o
         items = n
+        forced = false
         invalidate()
     }
 
@@ -100,11 +127,69 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
     }
 
     override fun onDraw(canvas: Canvas) {
+        val now = SystemClock.uptimeMillis()
+        val dt = if (toolFrame == 0L) 0.016f else ((now - toolFrame) / 1000f).coerceIn(0f, 0.05f)
+        toolFrame = now
+        val target = if (toolbarWanted()) 1f else 0f
+        if (!animations) toolLevel = target
+        else toolLevel += (target - toolLevel) * (1f - kotlin.math.exp(-dt * 16f * Anim.speed))
+        if (kotlin.math.abs(target - toolLevel) < 0.01f) toolLevel = target
+        var again = toolLevel != target
+        if (toolLevel < 1f) {
+            val save = if (toolLevel > 0f) canvas.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), (255 * (1f - toolLevel)).toInt()) else canvas.save()
+            if (drawSuggestions(canvas)) again = true
+            canvas.restoreToCount(save)
+        }
+        if (toolLevel > 0f) drawToolbar(canvas, toolLevel)
+        if (again) postInvalidateOnAnimation() else toolFrame = 0L
+    }
+
+    private fun toolIcon(c: Canvas, id: Int, cx: Float, cy: Float, s: Float, t: GlassTheme) {
+        when (id) {
+            TOOL_EMOJI -> Icons.emoji(c, cx, cy, s, t.icon, t.iconFill)
+            TOOL_CLIPBOARD -> Icons.clipboard(c, cx, cy, s, t.icon)
+            TOOL_LANGUAGE -> Icons.globe(c, cx, cy, s, t.icon)
+            TOOL_HIDE -> Icons.hideKeyboard(c, cx, cy, s, t.icon)
+            else -> Icons.gear(c, cx, cy, s, t.icon)
+        }
+    }
+
+    private fun drawToolbar(c: Canvas, alpha: Float) {
+        val t = theme
+        val w = width / TOOLS.toFloat()
+        val cy = height / 2f
+        for (i in 0 until TOOLS) {
+            val cx = w * i + w / 2
+            if (i == toolPressed) {
+                t.fill.shader = null
+                t.fill.color = t.candidateHighlight
+                t.fill.alpha = (Color.alpha(t.candidateHighlight) * alpha).toInt()
+                c.drawCircle(cx, cy, 18 * dp, t.fill)
+                t.fill.alpha = 255
+            }
+            t.icon.color = t.stripIcon
+            t.iconFill.color = t.stripIcon
+            t.icon.alpha = (Color.alpha(t.stripIcon) * alpha).toInt()
+            t.iconFill.alpha = t.icon.alpha
+            toolIcon(c, i, cx, cy, 22 * dp, t)
+        }
+        t.icon.alpha = 255
+        t.iconFill.alpha = 255
+    }
+
+    /** Draws the three suggestion slots; returns true while something is animating. */
+    private fun drawSuggestions(canvas: Canvas): Boolean {
         val t = theme
         val now = SystemClock.uptimeMillis()
-        val w = width / 3f
+        val left = sugLeft()
+        val w = (width - left) / 3f
         val h = height.toFloat()
         var again = false
+        if (toolbarEnabled && hasItems()) {
+            // › opens the toolbar
+            t.icon.color = t.stripIcon
+            Icons.chevronRight(canvas, chevW / 2f + 2 * dp, h / 2f, 16 * dp, t.icon)
+        }
         val pills = FloatArray(3)
         var anyPill = false
         for (i in 0 until 3) {
@@ -125,7 +210,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             target = Canvas(bmp)
         }
         for (i in 0 until 3) {
-            val l = i * w
+            val l = left + i * w
             val a = if (!animations || style == 4) 1f else ((now - changedAt[i]) / fadeMs).coerceIn(0f, 1f)
             if (a < 1f) {
                 again = true
@@ -137,7 +222,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             // glass off: plain pill under the words
             for (i in 0 until 3) {
                 if (pills[i] <= 0f) continue
-                pillRect(i, w, h)
+                pillRect(i, left, w, h)
                 t.fill.shader = null
                 t.fill.color = t.candidateHighlight
                 t.fill.alpha = (Color.alpha(t.candidateHighlight) * pills[i]).toInt()
@@ -151,7 +236,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             clipPath.reset()
             for (i in 0 until 3) {
                 if (pills[i] <= 0f) continue
-                pillRect(i, w, h)
+                pillRect(i, left, w, h)
                 clipPath.addRoundRect(lensRect, lensRect.height() / 2f, lensRect.height() / 2f, android.graphics.Path.Direction.CW)
             }
             canvas.clipOutPath(clipPath)
@@ -161,7 +246,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             lens.setContent(bmp, 0f, 0f)
             for (i in 0 until 3) {
                 if (pills[i] <= 0f) continue
-                pillRect(i, w, h)
+                pillRect(i, left, w, h)
                 // fading pills show the plain word through their transparent part
                 if (pills[i] < 1f) {
                     canvas.save()
@@ -183,9 +268,9 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             val a = items[i - 1]
             val b = items[i]
             if (a == null || b == null || a.highlight || b.highlight) continue
-            canvas.drawRect(i * w - 0.5f * dp, 13 * dp, i * w + 0.5f * dp, h - 11 * dp, t.fill)
+            canvas.drawRect(left + i * w - 0.5f * dp, 13 * dp, left + i * w + 0.5f * dp, h - 11 * dp, t.fill)
         }
-        if (again) postInvalidateOnAnimation()
+        return again
     }
 
     private fun drawWord(canvas: Canvas, c: Candidate, slot: Int, l: Float, w: Float, h: Float, alpha: Float, incoming: Boolean, now: Long, t: GlassTheme) {
@@ -215,7 +300,32 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        val i = (e.x / (width / 3f)).toInt().coerceIn(0, 2)
+        if (toolbarWanted()) {
+            val i = (e.x / (width / TOOLS.toFloat())).toInt().coerceIn(0, TOOLS - 1)
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> toolPressed = i
+                MotionEvent.ACTION_MOVE -> if (i != toolPressed) toolPressed = -1
+                MotionEvent.ACTION_UP -> {
+                    val p = toolPressed
+                    toolPressed = -1
+                    if (p == i) {
+                        forced = false
+                        onTool?.invoke(p)
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> toolPressed = -1
+            }
+            invalidate()
+            return true
+        }
+        val left = sugLeft()
+        if (e.actionMasked == MotionEvent.ACTION_DOWN && toolbarEnabled && e.x < left) {
+            forced = true
+            toolPressed = -1
+            invalidate()
+            return false
+        }
+        val i = ((e.x - left) / ((width - left) / 3f)).toInt().coerceIn(0, 2)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (items[i] == null) return false
@@ -231,8 +341,8 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
                 pressed = -1
                 invalidate()
                 if (p == i) items[p]?.let {
-                    val w = width / 3f
-                    onTapAt?.invoke(p * w + w / 2, height / 2f)
+                    val w = (width - left) / 3f
+                    onTapAt?.invoke(left + p * w + w / 2, height / 2f)
                     onPick(it)
                 }
             }
