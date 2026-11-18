@@ -1,6 +1,7 @@
-## Glass Keyboard 0.0.9
+## Glass Keyboard 0.0.10
 
-- **Navigációs sáv:** új megoldás – a billentyűzet ablakának háttere és a sáv színe minden megjelenéskor a billentyűzet aljának színét kapja
-- **Szóköz-kurzor:** a gombok feliratai nem tűnnek el a kurzor mozgatása közben, csak kicsit halványabbak
-- **Kijelölő kapszula anyaga választható:** Liquid glass vagy Frosted glass – egy beállítás állítja a javaslat kapszulát és az ékezetválasztót együtt
-- **Háttér elmosás** kikapcsolt üvegfelületnél is működik
+- **Diktálás:** a mikrofon gombbal közvetlenül a billentyűzetben diktálhatsz (magyarul vagy angolul, a kiválasztott nyelven); a javaslatsáv élőben mutatja a felismert szöveget, a mikrofon közben pulzál. Első használatkor egyszer engedélyt kér a mikrofonhoz
+- **Hosszú nyomás menü anyaga választható:** Liquid glass (a mögötte lévő gombok fénytörve átlátszanak), Frosted glass (elmosott, matt) vagy tömör
+- **Szóköz-kurzor:** a feliratok áttűnéssel halványulnak el és vissza
+- **Navigációs sáv:** új próbálkozás – Android 15+ alatt a rendszer saját (fekete) billentyűzet-navigációs sávja elrejtve, a billentyűzet rajzolja a helyét
+- **Szögletes sarkok javítva** a lekerekített billentyűzet mögött

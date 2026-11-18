@@ -40,6 +40,30 @@ object Shared {
         dicts.getOrPut(lang) { UserDict(java.io.File(ctx.filesDir, "user_$lang.tsv")) }
 }
 
+/** Window background: transparent, but fills everything below the keyboard sheet (gesture bar area). */
+class BelowSheetFill(private val root: View, color: Int) : android.graphics.drawable.Drawable() {
+    private val paint = android.graphics.Paint().apply { this.color = color }
+
+    override fun draw(canvas: Canvas) {
+        val loc = IntArray(2)
+        root.getLocationInWindow(loc)
+        val top = (loc[1] + root.height).toFloat()
+        val b = bounds
+        if (root.height > 0 && top < b.bottom) canvas.drawRect(b.left.toFloat(), top, b.right.toFloat(), b.bottom.toFloat(), paint)
+    }
+
+    override fun setAlpha(alpha: Int) {
+        paint.alpha = alpha
+    }
+
+    override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+        paint.colorFilter = colorFilter
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+}
+
 /** Root of the input view: transparent margin on top (for balloons), then the glass sheet. */
 class KeyboardRoot(context: Context, val panel: View, val overlay: View) : ViewGroup(context) {
     var theme: GlassTheme? = null
@@ -199,6 +223,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     override fun onDestroy() {
+        recognizer?.destroy()
         saveDicts()
         worker.shutdown()
         super.onDestroy()
@@ -252,15 +277,21 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         panel.addView(area, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val r = KeyboardRoot(this, panel, overlay)
         root = r
+        overlay.backdrop = { scale -> renderBackdrop(scale) }
+        // the strip below the sheet follows the sheet's size
+        r.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> window?.window?.decorView?.invalidate() }
         // draw the glass sheet behind the navigation bar too (no black band under the keys)
         if (Build.VERSION.SDK_INT >= 30) {
             window?.window?.let { w ->
                 // without this flag the system paints a black "legacy" bar under the keyboard
                 w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
                 w.isNavigationBarContrastEnforced = false
+                w.setDecorFitsSystemWindows(false)
             }
             r.setOnApplyWindowInsetsListener { _, insets ->
-                r.bottomInset = insets.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom
+                // the system's IME navigation bar reports itself as a caption bar
+                val types = android.view.WindowInsets.Type.navigationBars() or android.view.WindowInsets.Type.captionBar()
+                r.bottomInset = insets.getInsets(types).bottom
                 insets
             }
         }
@@ -287,9 +318,15 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         // same colour as the bottom of the glass sheet
         @Suppress("DEPRECATION")
         w.navigationBarColor = t.panelBottom or 0xFF000000.toInt()
-        // The window background shows wherever the system leaves the bottom (gesture) bar area
-        // to the keyboard: give it the colour of the bottom of the glass sheet instead of black.
-        w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(t.panelBottom))
+        // The window background is transparent (so the sheet keeps its rounded corners) except
+        // below the sheet, where the gesture bar sits: that strip gets the sheet's bottom colour.
+        root?.let { r -> w.setBackgroundDrawable(BelowSheetFill(r, t.panelBottom or 0xFF000000.toInt())) }
+        // Android 15+: hide the system-drawn IME navigation bar (its black background); the
+        // keyboard paints that area itself.
+        if (Build.VERSION.SDK_INT >= 35) try {
+            w.insetsController?.hide(android.view.WindowInsets.Type.captionBar())
+        } catch (_: Exception) {
+        }
         // see-through sheet: blur whatever the app shows behind the keyboard (Android 12+)
         if (Build.VERSION.SDK_INT >= 31) try {
 
@@ -310,6 +347,24 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             w.decorView.systemUiVisibility = if (t.dark) flags and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
             else flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         }
+    }
+
+    /** The keyboard as it looks now (sheet + suggestions + keys) at [scale]: the picker's glass shows it. */
+    private fun renderBackdrop(scale: Float): android.graphics.Bitmap? {
+        val r = root ?: return null
+        val t = theme ?: return null
+        if (r.width == 0 || r.height == 0) return null
+        val bmp = android.graphics.Bitmap.createBitmap(
+            maxOf(1, (r.width * scale).toInt()), maxOf(1, (r.height * scale).toInt()), android.graphics.Bitmap.Config.ARGB_8888
+        )
+        val c = Canvas(bmp)
+        c.scale(scale, scale)
+        t.drawPanel(c, 0f, r.panel.top.toFloat(), r.width.toFloat(), r.height.toFloat())
+        c.save()
+        c.translate(r.panel.left.toFloat(), r.panel.top.toFloat())
+        r.panel.draw(c)
+        c.restore()
+        return bmp
     }
 
     override fun onEvaluateFullscreenMode() = false
@@ -378,6 +433,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         overlay.animations = prefs.animations
         overlay.previewStyle = prefs.previewAnim
         overlay.popupStyle = prefs.popupAnim
+        overlay.popupGlass = prefs.popupGlass
         bar.animations = prefs.animations
         bar.style = prefs.suggAnim
         kb.pressStyle = prefs.pressAnim
@@ -592,6 +648,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private fun pickCandidate(c: Candidate) {
+        if (listening) {
+            recognizer?.stopListening()
+            return
+        }
         val ic = currentInputConnection ?: return
         val before = textBefore()
         val word = extractWord(before)
@@ -883,7 +943,104 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
     }
 
+    // ------------------------------------------------------------------ dictation
+
+    private var recognizer: android.speech.SpeechRecognizer? = null
+    private var listening = false
+
     override fun onMic() {
+        if (listening) {
+            recognizer?.stopListening()
+            return
+        }
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            // a keyboard cannot ask for permissions itself: a tiny screen asks once
+            startActivity(android.content.Intent(this, MicPermissionActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        }
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
+            switchToVoiceIme()
+            return
+        }
+        startDictation()
+    }
+
+    private fun startDictation() {
+        val rec = recognizer ?: android.speech.SpeechRecognizer.createSpeechRecognizer(this).also { recognizer = it }
+        rec.setRecognitionListener(object : android.speech.RecognitionListener {
+            override fun onReadyForSpeech(params: android.os.Bundle?) = showDictation(if (hu) "Hallgatlak…" else "Listening…")
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() = showDictation(if (hu) "Feldolgozás…" else "Processing…")
+            override fun onError(error: Int) {
+                stopDictation()
+                if (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) return
+                Toast.makeText(this@GlassKeyboardService, if (hu) "Diktálás nem sikerült ($error)" else "Dictation failed ($error)", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onResults(results: android.os.Bundle?) {
+                val text = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                stopDictation()
+                if (!text.isNullOrBlank()) insertDictated(text)
+            }
+
+            override fun onPartialResults(partialResults: android.os.Bundle?) {
+                val text = partialResults?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (!text.isNullOrBlank()) showDictation("🎤 $text")
+            }
+
+            override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+        })
+        val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, if (hu) "hu-HU" else "en-US")
+            putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+        }
+        listening = true
+        kb.micActive = true
+        showDictation(if (hu) "Hallgatlak…" else "Listening…")
+        try {
+            rec.startListening(intent)
+        } catch (e: Exception) {
+            stopDictation()
+            switchToVoiceIme()
+        }
+    }
+
+    private fun showDictation(text: String) {
+        if (listening) bar.set(listOf(null, Candidate("", text), null))
+    }
+
+    private fun stopDictation() {
+        listening = false
+        if (::kb.isInitialized) kb.micActive = false
+        if (::bar.isInitialized) bar.clear()
+        scheduleRefresh()
+    }
+
+    /** Puts the dictated text in with sensible spacing and a capital at sentence start. */
+    private fun insertDictated(raw: String) {
+        val ic = currentInputConnection ?: return
+        val before = textBefore(32)
+        var text = raw.trim()
+        if (sentenceStart(before) && capsAllowed) text = text.substring(0, 1).uppercase(engine().locale) + text.substring(1)
+        val space = if (before.isNotEmpty() && !before.last().isWhitespace()) " " else ""
+        ic.commitText(space + text + " ", 1)
+        lastCorrection = null
+        afterInput()
+    }
+
+    override fun onFinishInput() {
+        if (listening) {
+            recognizer?.cancel()
+            stopDictation()
+        }
+        super.onFinishInput()
+    }
+
+    private fun switchToVoiceIme() {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         for (imi in imm.enabledInputMethodList) {
             if (imi.packageName == packageName) continue
@@ -898,7 +1055,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                 }
             }
         }
-        Toast.makeText(this, if (hu) "Nincs bekapcsolt hangalapú bevitel (pl. Google hangbevitel)." else "No voice input method is enabled.", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, if (hu) "Nincs elérhető beszédfelismerés a telefonon (pl. Google alkalmazás)." else "No speech recognition is available.", Toast.LENGTH_LONG).show()
     }
 
     override fun onCursor(dx: Int, dy: Int) {

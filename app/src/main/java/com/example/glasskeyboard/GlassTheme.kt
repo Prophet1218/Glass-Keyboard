@@ -265,6 +265,16 @@ class GlassTheme(
         rimPaint.alpha = 255
     }
 
+    /** Only the light rim of a glass outline (for surfaces whose body is drawn elsewhere). */
+    fun drawRim(c: Canvas, shape: Path, bounds: RectF, alpha: Int = 255) {
+        if (!params.rim) return
+        rimPaint.shader = stretch(rimShader, bounds)
+        rimPaint.alpha = alpha
+        c.drawPath(shape, rimPaint)
+        rimPaint.shader = null
+        rimPaint.alpha = 255
+    }
+
     /** The keyboard sheet from [top] to the bottom of the view. */
     fun drawPanel(c: Canvas, left: Float, top: Float, right: Float, bottom: Float) {
         val r = 24f * dp

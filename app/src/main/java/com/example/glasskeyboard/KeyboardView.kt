@@ -84,6 +84,12 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
         }
     var showGlobe = true
     var showMic = true
+    /** dictation running: the mic glows */
+    var micActive = false
+        set(v) {
+            field = v
+            invalidate()
+        }
     var previews = true
     var spaceCursor = true
     var heightScale = 1f
@@ -106,6 +112,25 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
     private val micKey = Key(KeyType.MIC, "")
     private val rowTops = ArrayList<Float>()
     private var cursorMode = false
+        set(v) {
+            if (field != v) {
+                // start the dim / un-dim from wherever the fade currently is
+                cursorFrom = cursorDim(SystemClock.uptimeMillis())
+                cursorAt = SystemClock.uptimeMillis()
+                field = v
+            }
+        }
+    private var cursorAt = 0L
+    private var cursorFrom = 0f
+
+    /** 0..1: how far the labels are dimmed for the space-bar trackpad (animated both ways). */
+    private fun cursorDim(now: Long): Float {
+        val target = if (cursorMode) 1f else 0f
+        if (!animations) return target
+        val t = ((now - cursorAt) / Anim.ms(170f)).coerceIn(0f, 1f)
+        val e = 1f - (1f - t) * (1f - t)
+        return cursorFrom + (target - cursorFrom) * e
+    }
 
     private val rowHeight get() = 54f * dp * heightScale
     private val topPad get() = 4f * dp
@@ -307,8 +332,22 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             labelAlpha = keep
         }
         if (showGlobe) drawStripIcon(canvas, globeKey, globeIcon, pressProgress(globeKey, globeKey in pressed, now), t)
-        if (showMic) drawStripIcon(canvas, micKey, micIcon, pressProgress(micKey, micKey in pressed, now), t)
+        if (showMic) {
+            if (micActive) {
+                // pulsing accent halo while listening
+                val ph = ((now % 1200L) / 1200f)
+                val pulse = 0.5f + 0.5f * kotlin.math.sin(ph * 2f * Math.PI.toFloat())
+                t.fill.shader = null
+                t.fill.color = t.accent
+                t.fill.alpha = (70 + 60 * pulse).toInt()
+                canvas.drawCircle(micKey.rect.centerX(), micKey.rect.centerY(), (17 + 4 * pulse) * dp, t.fill)
+                t.fill.alpha = 255
+                animating = true
+            }
+            drawStripIcon(canvas, micKey, micIcon, pressProgress(micKey, micKey in pressed, now), t)
+        }
         t.icon.color = t.text
+        if (animations && SystemClock.uptimeMillis() - cursorAt < Anim.ms(180f)) animating = true
         if (animating || releaseAt.isNotEmpty()) postInvalidateOnAnimation()
     }
 
@@ -356,10 +395,11 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             t.fill.alpha = 255
         }
         t.drawKey(c, r, if (style == 2) GlassTheme.lerpColor(color, if (k.special) t.keySpecial else t.key, p * 0.7f) else color)
-        // labels stay visible in trackpad (space-bar cursor) mode, just a little softer
-        if (cursorMode) {
+        // labels stay visible in trackpad (space-bar cursor) mode, they fade a little softer
+        val dim = cursorDim(SystemClock.uptimeMillis())
+        if (dim > 0f) {
             val keep = labelAlpha
-            labelAlpha = labelAlpha * 3 / 5
+            labelAlpha = (labelAlpha * (1f - 0.42f * dim)).toInt()
             drawLabel(c, k, t, r)
             labelAlpha = keep
         } else drawLabel(c, k, t, r)

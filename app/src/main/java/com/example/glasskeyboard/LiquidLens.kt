@@ -44,16 +44,22 @@ class LiquidLens(private val dp: Float) {
     private var contentTop = 0f
 
     /** What lies under the lens: a bitmap whose top-left corner is at ([left], [top]) in canvas coordinates. */
-    fun setContent(bmp: Bitmap, left: Float, top: Float) {
+    fun setContent(bmp: Bitmap, left: Float, top: Float, scale: Float = 1f) {
         if (bmp !== content) {
             content = bmp
-            contentShader = BitmapShader(bmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+            contentShader = BitmapShader(bmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
+                if (Build.VERSION.SDK_INT >= 33) it.filterMode = BitmapShader.FILTER_MODE_LINEAR
+            }
         }
         contentLeft = left
         contentTop = top
-        m.setTranslate(left, top)
+        contentScale = scale
+        m.setScale(scale, scale)
+        m.postTranslate(left, top)
         contentShader?.setLocalMatrix(m)
     }
+
+    private var contentScale = 1f
 
     /**
      * Draws the glass over [r].
@@ -143,8 +149,10 @@ class LiquidLens(private val dp: Float) {
         content?.let {
             c.save()
             c.scale(mag, mag, r.centerX(), r.centerY())
+            c.translate(contentLeft, contentTop)
+            c.scale(contentScale, contentScale)
             fallback.alpha = (255 * alpha).toInt()
-            c.drawBitmap(it, contentLeft, contentTop, fallback)
+            c.drawBitmap(it, 0f, 0f, fallback)
             c.restore()
         }
         fallback.color = tint
