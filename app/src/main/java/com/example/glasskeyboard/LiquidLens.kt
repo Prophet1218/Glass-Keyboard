@@ -62,11 +62,11 @@ class LiquidLens(private val dp: Float) {
      * @param amount how far the rim bends the content, px
      * @param tint glass body colour (ARGB; alpha = how milky the glass is)
      */
-    fun draw(
-        c: Canvas, r: RectF, radius: Float, mag: Float, height: Float, amount: Float,
-        tint: Int, dark: Boolean, alpha: Float = 1f, shadow: Boolean = true,
-    ) {
+    fun draw(c: Canvas, r: RectF, radius: Float, mag: Float, t: GlassTheme, tint: Int, alpha: Float = 1f, shadow: Boolean = true) {
         if (alpha <= 0f) return
+        val dark = t.dark
+        val height = t.lensHeight
+        val amount = if (t.frosted) 0f else t.lensAmount
         val rad = minOf(radius, r.height() / 2f, r.width() / 2f)
         if (shadow) {
             c.save()
@@ -81,6 +81,15 @@ class LiquidLens(private val dp: Float) {
             }
             c.restore()
         }
+        if (t.solid) {
+            // glass switched off: a plain capsule
+            fallback.shader = null
+            fallback.color = tint
+            fallback.alpha = (Color.alpha(tint) * alpha).toInt()
+            c.drawRoundRect(r, rad, rad, fallback)
+            fallback.alpha = 255
+            return
+        }
         val sh = shader
         val cs = contentShader
         if (sh != null && cs != null) try {
@@ -91,7 +100,10 @@ class LiquidLens(private val dp: Float) {
             sh.setFloatUniform("mag", mag)
             sh.setFloatUniform("refrHeight", minOf(height, rad, r.width() / 2f))
             sh.setFloatUniform("refrAmount", amount)
-            sh.setFloatUniform("dispersion", 1f)
+            sh.setFloatUniform("dispersion", t.lensDispersion)
+            sh.setFloatUniform("blur", t.lensBlur)
+            sh.setFloatUniform("rimOn", if (t.params.rim) 1f else 0f)
+            sh.setFloatUniform("convex", if (t.params.convex) 1f else 0f)
             val a = Color.alpha(tint) / 255f
             sh.setFloatUniform("tint", Color.red(tint) / 255f * a, Color.green(tint) / 255f * a, Color.blue(tint) / 255f * a, a)
             sh.setFloatUniform("light", if (dark) 0f else 1f)
@@ -122,6 +134,7 @@ class LiquidLens(private val dp: Float) {
         fallback.alpha = (Color.alpha(tint) * alpha).toInt()
         c.drawRect(r, fallback)
         c.restore()
+        if (!t.params.rim) return
         rimPaint.strokeWidth = 1.2f * dp
         rimPaint.shader = LinearGradient(0f, r.top, 0f, r.bottom, intArrayOf(0xE6FFFFFF.toInt(), 0x14FFFFFF, 0x66FFFFFF), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         rimPaint.alpha = (255 * alpha).toInt()
@@ -143,6 +156,21 @@ uniform float dispersion;
 uniform float4 tint;
 uniform float light;
 uniform float alpha;
+uniform float blur;
+uniform float rimOn;
+uniform float convex;
+
+// what is under the glass, optionally softened (frosted look)
+float4 look(float2 c) {
+    if (blur < 0.5) { return float4(content.eval(c)); }
+    float b = blur * 0.7;
+    float4 s = float4(content.eval(c)) * 0.2;
+    s += float4(content.eval(c + float2(b, b))) * 0.2;
+    s += float4(content.eval(c + float2(-b, b))) * 0.2;
+    s += float4(content.eval(c + float2(b, -b))) * 0.2;
+    s += float4(content.eval(c + float2(-b, -b))) * 0.2;
+    return s;
+}
 
 // rounded-rectangle SDF and its gradient: adapted from Kyant's AndroidLiquidGlass (Apache-2.0)
 float sdRoundedRect(float2 coord, float2 hs, float r) {
@@ -181,16 +209,16 @@ half4 main(float2 xy) {
 
     float4 col;
     if (-s >= refrHeight) {
-        col = float4(content.eval(base));
+        col = look(base);
     } else {
         // the rim band bends the view inwards with a circular profile
         float d = circleMap(1.0 - (-s) / refrHeight) * (-refrAmount);
         float2 rc = base + d * grad;
         float di = dispersion * (p.x * p.y) / (halfSize.x * halfSize.y);
         float2 dc = d * grad * di;
-        float4 cr = float4(content.eval(rc + dc));
-        float4 cg = float4(content.eval(rc));
-        float4 cb = float4(content.eval(rc - dc));
+        float4 cr = look(rc + dc);
+        float4 cg = look(rc);
+        float4 cb = look(rc - dc);
         col = float4(cr.r, cg.g, cb.b, (cr.a + cg.a + cb.a) / 3.0);
     }
 
@@ -200,7 +228,7 @@ half4 main(float2 xy) {
     // ambient rim highlight: bright on the side facing the light, faintly dark opposite
     float rim = 1.0 - smoothstep(0.0, 1.6, -sd);
     float dl = dot(grad, normalize(float2(-0.35, -1.0)));
-    float lit = pow(abs(dl), 1.4) * rim;
+    float lit = pow(abs(dl), 1.4) * rim * rimOn;
     float3 rgb = res.rgb;
     float a = res.a;
     if (dl > 0.0) {
@@ -210,6 +238,16 @@ half4 main(float2 xy) {
     } else {
         rgb = rgb * (1.0 - lit * 0.18);
         a = a + lit * 0.12 * (1.0 - a);
+    }
+    // domed (3D) glass: a bright glint near the top-left and a soft bevel along the rim
+    if (convex > 0.5) {
+        float band = 1.0 - smoothstep(0.0, refrHeight, -sd);
+        float bevel = band * dl * 0.22;
+        rgb = clamp(rgb + float3(bevel, bevel, bevel) * a, 0.0, 1.0);
+        float2 gp = (p - float2(-halfSize.x * 0.45, -halfSize.y * 0.45)) / max(halfSize.y, 1.0);
+        float glint = exp(-dot(gp, gp) * 6.0) * 0.35;
+        rgb = rgb + float3(glint, glint, glint) * (1.0 - rgb);
+        a = a + glint * (1.0 - a);
     }
     // a soft sheen inside the upper rim
     float sheen = (1.0 - smoothstep(0.0, refrHeight * 1.4, -sd)) * clamp(-grad.y, 0.0, 1.0) * 0.10 * mix(0.6, 1.0, light);

@@ -23,10 +23,24 @@ import java.util.Random
  *    refraction glow along the bottom edge — the "Liquid Glass" look;
  *  - frosted (1): milky, matte keys and sheet with a fine grain, gentle highlights.
  */
-class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpacity: Int = 100, keyOpacity: Int = 100) {
+class GlassTheme(
+    context: Context, prefTheme: Int, val style: Int = 0, panelOpacity: Int = 100, keyOpacity: Int = 100,
+    val params: GlassParams = GlassParams(),
+) {
+    /** "clear" tone: very see-through sheet and keys */
+    val clear = prefTheme == 3
     /** 0..1 opacity of the keyboard sheet and of the keys (settings). */
-    val panelAlpha = (panelOpacity / 100f).coerceIn(0f, 1f)
-    val keyAlpha = (keyOpacity / 100f).coerceIn(0f, 1f)
+    val panelAlpha = (panelOpacity / 100f).coerceIn(0f, 1f) * (if (clear) 0.22f else 1f)
+    val keyAlpha = (keyOpacity / 100f).coerceIn(0f, 1f) * (if (clear) 0.6f else 1f)
+    /** glass switched off: plain solid surfaces */
+    val solid = style == 2
+    val frosted = style == 1
+
+    // lens (refraction) parameters, in px
+    val lensHeight get() = params.refrHeight / 3f * dp
+    val lensAmount get() = params.refrOffset / 4f * dp * (if (params.convex) 1.5f else 1f)
+    val lensDispersion get() = params.dispersion / 50f
+    val lensBlur get() = params.blur * 0.35f * dp
     val dp = context.resources.displayMetrics.density
     val sp = dp * context.resources.configuration.fontScale
 
@@ -71,12 +85,26 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpac
                 popup = 0xFFFFFFFF.toInt()
             }
         }
+        panelTop = fx(panelTop); panelBottom = fx(panelBottom)
+        key = fx(key); keySpecial = fx(keySpecial); keyPressed = fx(keyPressed); keySpecialPressed = fx(keySpecialPressed)
+        popup = fx(popup)
         panelTop = withAlpha(panelTop, panelAlpha)
         panelBottom = withAlpha(panelBottom, panelAlpha)
         key = withAlpha(key, keyAlpha)
         keySpecial = withAlpha(keySpecial, keyAlpha)
         keyPressed = withAlpha(keyPressed, keyAlpha)
         keySpecialPressed = withAlpha(keySpecialPressed, keyAlpha)
+    }
+
+    /** Colour tint (hue + strength) and darkening of the glass, alpha kept. */
+    private fun fx(c: Int): Int {
+        var out = c
+        if (params.hueStrength > 0) {
+            val tintCol = Color.HSVToColor(floatArrayOf(params.hue.toFloat(), if (dark) 0.55f else 0.45f, if (dark) 0.55f else 1f))
+            out = mixRgb(out, tintCol, params.hueStrength / 100f)
+        }
+        if (params.darken > 0) out = mixRgb(out, Color.BLACK, params.darken / 100f)
+        return out
     }
 
     val panelRim = withAlpha(if (dark) 0x40FFFFFF else 0xE6FFFFFF.toInt(), panelAlpha)
@@ -139,6 +167,11 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpac
         else intArrayOf(if (dark) 0x40FFFFFF else 0x99FFFFFF.toInt(), 0x00FFFFFF, 0x00FFFFFF),
         floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
     )
+    private val convexShade = LinearGradient(
+        0f, 0f, 0f, 1f,
+        intArrayOf(0x00000000, 0x00000000, if (dark) 0x33000000 else 0x1A000000),
+        floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP
+    )
     private val panelSheen = LinearGradient(
         0f, 0f, 1f, 1f,
         intArrayOf(if (dark) 0x14FFFFFF else 0x4DFFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP
@@ -174,10 +207,18 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpac
         fill.color = color
         c.drawRoundRect(r, radius, radius, fill)
 
+        if (solid) return
         overlayPaint.alpha = (255 * keyAlpha).toInt()
         grainPaint.alpha = (grainBase * keyAlpha).toInt()
         overlayPaint.shader = stretch(sheen, r)
         c.drawRoundRect(r, radius, radius, overlayPaint)
+        if (params.convex) {
+            // domed glass: a second, tighter sheen on top and a shade in the lower part
+            overlayPaint.shader = stretch(sheen, r)
+            c.drawRoundRect(r, radius, radius, overlayPaint)
+            overlayPaint.shader = stretch(convexShade, r)
+            c.drawRoundRect(r, radius, radius, overlayPaint)
+        }
         if (liquid) {
             overlayPaint.shader = stretch(glow, r)
             c.drawRoundRect(r, radius, radius, overlayPaint)
@@ -186,6 +227,7 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpac
         }
         overlayPaint.shader = null
         overlayPaint.alpha = 255
+        if (!params.rim) return
 
         rimPaint.shader = stretch(rimShader, r)
         rimPaint.alpha = (255 * keyAlpha).toInt()
@@ -202,11 +244,13 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpac
         fill.alpha = (Color.alpha(color) * alpha) / 255
         c.drawPath(shape, fill)
         fill.alpha = 255
+        if (solid) return
         overlayPaint.shader = stretch(sheen, bounds)
         overlayPaint.alpha = alpha
         c.drawPath(shape, overlayPaint)
         overlayPaint.shader = null
         overlayPaint.alpha = 255
+        if (!params.rim) return
         rimPaint.shader = stretch(rimShader, bounds)
         rimPaint.alpha = alpha
         c.drawPath(shape, rimPaint)
@@ -223,6 +267,7 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpac
         path.addRoundRect(tmp, floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f), Path.Direction.CW)
         c.drawPath(path, fill)
         fill.shader = null
+        if (solid) return
         if (liquid) {
             // light falling diagonally across the glass
             m.setScale((right - left) * 0.6f, (bottom - top) * 0.6f)
@@ -237,6 +282,7 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpac
             grainPaint.alpha = (grainBase * panelAlpha).toInt()
             c.drawPath(path, grainPaint)
         }
+        if (!params.rim) return
         c.save()
         c.clipRect(left, top, right, top + r)
         tmp.set(left + 0.5f * dp, top + 0.5f * dp, right - 0.5f * dp, bottom + r)
@@ -261,6 +307,13 @@ class GlassTheme(context: Context, prefTheme: Int, val style: Int = 0, panelOpac
             bmp.setPixels(px, 0, n, 0, 0, n, n)
             bmp
         }
+
+        fun mixRgb(a: Int, b: Int, t: Float): Int = Color.argb(
+            Color.alpha(a),
+            (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
+            (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),
+            (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt(),
+        )
 
         fun withAlpha(c: Int, f: Float): Int = (c and 0x00FFFFFF) or ((Color.alpha(c) * f).toInt().coerceIn(0, 255) shl 24)
 

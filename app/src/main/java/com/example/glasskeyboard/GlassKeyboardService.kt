@@ -231,7 +231,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         kb = KeyboardView(this, this, overlay)
         bar = CandidateBar(this) { pickCandidate(it) }
         bar.onTapAt = { x, y ->
-            if (prefs.chaos) chaosBuzz()
+            if (prefs.chaos) suggestionTap()
         }
         emoji = EmojiView(this, this, prefs)
         emoji.visibility = View.GONE
@@ -249,7 +249,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private fun applyTheme() {
-        val t = GlassTheme(this, prefs.theme, prefs.glassStyle, prefs.panelOpacity, prefs.keyOpacity)
+        val t = GlassTheme(this, prefs.theme, prefs.glassStyle, prefs.panelOpacity, prefs.keyOpacity, prefs.glass())
         theme = t
         if (root == null) return
         root?.theme = t
@@ -262,6 +262,13 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     private fun styleNavBar(t: GlassTheme) {
         val w = window?.window ?: return
+        // see-through sheet: blur whatever the app shows behind the keyboard (Android 12+)
+        if (Build.VERSION.SDK_INT >= 31) try {
+            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            val blur = if (t.panelAlpha < 0.98f && !t.solid) (t.params.blur * 3f * t.dp + (if (t.frosted) 24f * t.dp else 0f)).toInt() else 0
+            w.setBackgroundBlurRadius(blur)
+        } catch (_: Exception) {
+        }
         @Suppress("DEPRECATION")
         w.navigationBarColor = t.panelBottom
         if (Build.VERSION.SDK_INT >= 30) {
@@ -402,8 +409,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val h = hu
         kb.layout = when (kind) {
             LayoutKind.LETTERS -> Layouts.letters(h, prefs.accentRow, field, prefs.numberRow, prefs.periodKey)
-            LayoutKind.SYMBOLS -> Layouts.symbols(h, field, prefs.periodKey, letterRows() - 4, suggestedEmoji())
-            LayoutKind.MORE -> Layouts.more(h, field, prefs.periodKey, letterRows() - 4, suggestedEmoji())
+            LayoutKind.SYMBOLS -> Layouts.symbols(h, field, prefs.periodKey, letterRows() - 4, suggestedEmoji(), prefs.numberRow)
+            LayoutKind.MORE -> Layouts.more(h, field, prefs.periodKey, letterRows() - 4, suggestedEmoji(), prefs.numberRow)
             LayoutKind.NUMBER -> {
                 val t = currentInputEditorInfo?.inputType ?: 0
                 Layouts.number(h, t and InputType.TYPE_NUMBER_FLAG_SIGNED != 0, t and InputType.TYPE_NUMBER_FLAG_DECIMAL != 0)
@@ -898,17 +905,13 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     // ------------------------------------------------------------------ feedback
 
-    /** An irregular, "chaotic" little rattle. */
-    private fun chaosBuzz() {
+    /** A single crisp haptic tap when a suggestion is chosen. */
+    private fun suggestionTap() {
         val v = vibrator ?: return
         if (prefs.haptics == 0) return
         try {
-            val rnd = java.util.Random()
-            val n = 7
-            val timings = LongArray(n * 2) { if (it % 2 == 0) (8 + rnd.nextInt(22)).toLong() else (6 + rnd.nextInt(16)).toLong() }
-            val amps = IntArray(n * 2) { if (it % 2 == 0) 0 else 40 + rnd.nextInt(200) }
-            if (v.hasAmplitudeControl()) v.vibrate(VibrationEffect.createWaveform(timings, amps, -1))
-            else v.vibrate(VibrationEffect.createWaveform(timings, -1))
+            if (Build.VERSION.SDK_INT >= 29) v.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+            else v.vibrate(VibrationEffect.createOneShot(14, 140))
         } catch (_: Exception) {
         }
     }

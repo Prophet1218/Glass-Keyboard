@@ -133,7 +133,19 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             }
             items[i]?.let { drawWord(target, it, i, l, w, h, a, true, now, t) }
         }
-        if (bmp != null) {
+        if (bmp != null && t.solid) {
+            // glass off: plain pill under the words
+            for (i in 0 until 3) {
+                if (pills[i] <= 0f) continue
+                pillRect(i, w, h)
+                t.fill.shader = null
+                t.fill.color = t.candidateHighlight
+                t.fill.alpha = (Color.alpha(t.candidateHighlight) * pills[i]).toInt()
+                canvas.drawRoundRect(lensRect, lensRect.height() / 2f, lensRect.height() / 2f, t.fill)
+                t.fill.alpha = 255
+            }
+            canvas.drawBitmap(bmp, 0f, 0f, null)
+        } else if (bmp != null) {
             // the plain words everywhere except under the glass (no double image)…
             canvas.save()
             clipPath.reset()
@@ -159,8 +171,8 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
                     canvas.restore()
                 }
                 lens.draw(
-                    canvas, lensRect, lensRect.height() / 2f, 1f, 10f * dp, 10f * dp,
-                    if (t.dark) 0x24FFFFFF else 0x59FFFFFF, t.dark, pills[i],
+                    canvas, lensRect, lensRect.height() / 2f, 1f, t,
+                    if (t.solid) t.candidateHighlight else if (t.dark) 0x24FFFFFF else 0x59FFFFFF, pills[i],
                 )
             }
         }

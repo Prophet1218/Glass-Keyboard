@@ -135,10 +135,30 @@ class SettingsActivity : Activity() {
         typing.addView(switchRow("Emoji javaslatok", "Pl. pizza → 🍕, szeretlek → ❤️", Prefs.K_EMOJI_SUGG, true))
         typing.addView(switchRow("Szóköz mint kurzor", "Szóközt hosszan nyomva vagy elhúzva mozgatható a kurzor", Prefs.K_SPACE_CURSOR, true))
 
+        // ---- glass (same set as in Glass Browser)
+        val glass = card("Üveghatás")
+        glass.addView(choiceRow("Üveg típusa", arrayOf("Folyékony üveg (fénytörés)", "Matt üveg (elmosás, fénytörés nélkül)", "Kikapcsolva (tömör felületek, üveg nélkül)"), Prefs.K_GLASS, 0))
+        glass.addView(choiceRow("Üveg árnyalata", arrayOf("Rendszer szerint (világos / sötét)", "Világos", "Sötét", "Átlátszó"), Prefs.K_THEME, 0))
+        glass.addView(hueRow("Üveg színe", Prefs.K_HUE, 210))
+        glass.addView(seekRow("Szín erőssége (0 = színtelen üveg)", Prefs.K_HUE_STRENGTH, 0, 70, 0, ""))
+        glass.addView(seekRow("Elmosás", Prefs.K_BLUR, 0, 24, 2, ""))
+        glass.addView(seekRow("Fénytörés magassága", Prefs.K_REFR_H, 12, 50, 30, ""))
+        glass.addView(seekRow("Fénytörés eltolása", Prefs.K_REFR_OFF, 20, 120, 50, ""))
+        glass.addView(seekRow("Színszóródás", Prefs.K_DISP, 0, 100, 0, ""))
+        glass.addView(seekRow("Üveg sötétítése", Prefs.K_GLASS_DARK, 0, 80, 0, ""))
+        glass.addView(switchRow("Körív az üvegen", "Vékony fényív az üvegfelületek (gombok, lap, kijelölő) szélén.", Prefs.K_RIM, true))
+        glass.addView(switchRow("Domború (3D) üveg", "Az üvegfelületek domborúnak, vastagnak látszanak: fénycsillanás a peremen, erősebb fénytörés a széleken.", Prefs.K_CONVEX, false))
+        glass.addView(actionRow("Alapértelmezett üvegbeállítások visszaállítása", "Az üveg típusa, árnyalata, színe, átlátszósága, az elmosás, a fénytörés és a színszóródás visszaáll az eredeti értékre.") {
+            AlertDialog.Builder(this).setMessage("Visszaállítod az üvegbeállításokat?")
+                .setPositiveButton("Visszaállítás") { _, _ ->
+                    prefs.resetGlass()
+                    recreate()
+                }
+                .setNegativeButton("Mégse", null).show()
+        })
+
         // ---- look & feel
         val look = card("Megjelenés és visszajelzés")
-        look.addView(choiceRow("Üveg stílus", arrayOf("Liquid glass – áttetsző, csillanó", "Frosted glass – matt, dérüveg"), Prefs.K_GLASS, 0))
-        look.addView(choiceRow("Téma", arrayOf("Rendszer szerint", "Világos", "Sötét"), Prefs.K_THEME, 0))
         look.addView(seekRow("Háttér átlátszatlansága", Prefs.K_PANEL_OPACITY, 0, 100, 100, "%"))
         look.addView(seekRow("Gombok átlátszatlansága", Prefs.K_KEY_OPACITY, 15, 100, 100, "%"))
         look.addView(seekRow("Billentyűmagasság", Prefs.K_KEY_HEIGHT, 80, 130, 100, "%"))
@@ -148,7 +168,7 @@ class SettingsActivity : Activity() {
         look.addView(choiceRow("Gombérintés effekt", arrayOf("Kiemelkedés", "Benyomódás", "Fénylés", "Nincs"), Prefs.K_PRESS_ANIM, 0))
         look.addView(choiceRow("Betűbuborék gépeléskor", arrayOf("Rugós felugrás", "Felúszás", "Áttűnés", "Azonnali"), Prefs.K_PREVIEW_ANIM, 0))
         look.addView(choiceRow("Hosszú nyomás (ékezetválasztó)", arrayOf("Rugós kinyílás", "Szétnyílás oldalra", "Áttűnés"), Prefs.K_POPUP_ANIM, 0))
-        look.addView(switchRow("Kaotikus visszajelzés", "Javaslatra koppintva rendhagyó, szabálytalan rezgés", Prefs.K_CHAOS, true))
+        look.addView(switchRow("Rezgés javaslatra koppintáskor", "Egy rövid, határozott haptikus jelzés", Prefs.K_CHAOS, true))
         look.addView(seekRow("Animációk sebessége (nagyobb = gyorsabb)", Prefs.K_ANIM_SPEED, 50, 200, 100, "%"))
         look.addView(choiceRow("Megnyílási animáció", arrayOf("Felcsúszás, fokozatosan lassulva", "Rugós felcsúszás", "Áttűnés és nagyítás", "Egyenletes felcsúszás", "Nincs"), Prefs.K_OPEN_ANIM, 0))
         look.addView(seekRow("Megnyílás időtartama (kisebb = gyorsabb)", Prefs.K_OPEN_MS, 100, 900, 320, " ms"))
@@ -332,6 +352,41 @@ class SettingsActivity : Activity() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
         box.addView(sb, lp(top = 4))
+        return box
+    }
+
+    /** Colour (hue) slider with a rainbow track. */
+    private fun hueRow(title: String, key: String, def: Int): View {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
+        val label = text(title, 16f, textColor)
+        box.addView(label)
+        val swatch = View(this)
+        fun col(h: Int) = Color.HSVToColor(floatArrayOf(h.toFloat(), 0.6f, 1f))
+        swatch.background = rounded(col(prefs.sp.getInt(key, def)), 8f)
+        val sb = SeekBar(this)
+        sb.max = 360
+        sb.progress = prefs.sp.getInt(key, def)
+        val rainbow = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, IntArray(7) { col(it * 60) })
+        rainbow.cornerRadius = 4 * dp
+        rainbow.setSize(1, (8 * dp).toInt())
+        sb.progressDrawable = rainbow
+        sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                (swatch.background as? GradientDrawable)?.setColor(col(progress))
+                if (fromUser) prefs.sp.edit().putInt(key, progress).apply()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        val line = LinearLayout(this)
+        line.orientation = LinearLayout.HORIZONTAL
+        line.gravity = Gravity.CENTER_VERTICAL
+        line.addView(sb, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        line.addView(swatch, LinearLayout.LayoutParams((26 * dp).toInt(), (26 * dp).toInt()))
+        box.addView(line, lp(top = 6))
         return box
     }
 

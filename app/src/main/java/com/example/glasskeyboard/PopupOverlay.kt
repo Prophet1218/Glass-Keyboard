@@ -145,7 +145,7 @@ class PopupOverlay(context: Context) : View(context) {
         val b = popup
         b.key.set(k.left + o.x, k.top + o.y, k.right + o.x, k.bottom + o.y)
         itemW = maxOf(b.key.width(), 30f * dp)
-        val pad = 5f * dp
+        val pad = 9f * dp
         val w = items.size * itemW + 2 * pad
         var l = b.key.centerX() - itemW / 2 - pad
         // Near the right edge the picker opens to the left, in reverse order, so the default
@@ -219,7 +219,7 @@ class PopupOverlay(context: Context) : View(context) {
         c.translate(-popup.box.left, -popup.box.top)
         paint.color = t.popup
         paint.alpha = 255
-        val br = 12f * dp
+        val br = popup.box.height() / 2f
         c.drawRoundRect(popup.box, br, br, paint)
         drawLetters(c, t, 1f)
         lens.setContent(bmp, popup.box.left, popup.box.top)
@@ -328,7 +328,8 @@ class PopupOverlay(context: Context) : View(context) {
         val bubble = b.box
         val key = b.key
         shape.reset()
-        val br = 12f * dp
+        // the picker is a capsule, concentric with the round glass lens inside it
+        val br = if (b === popup) bubble.height() / 2f else 12f * dp
         shape.addRoundRect(bubble, br, br, Path.Direction.CW)
         tmpPath.reset()
         tmpPath.addRoundRect(key, t.keyRadius, t.keyRadius, Path.Direction.CW)
@@ -456,18 +457,25 @@ class PopupOverlay(context: Context) : View(context) {
                 }
                 // the glass grows a little while held and stretches with its speed
                 val vel = (lensV / (2600f * dp / 3f)).coerceIn(-1f, 1f)
-                val grow = 1f + 0.10f * lensPress
+                val grow = 1f + 0.08f * lensPress
                 val sx = grow / (1f - (kotlin.math.abs(vel) * 0.22f).coerceAtMost(0.2f))
                 val sy = grow * (1f - (kotlin.math.abs(vel) * 0.12f).coerceAtMost(0.15f))
                 val cx = lensX + itemW / 2f
                 val cy = popup.box.centerY()
                 val hw = (itemW / 2f + 2f * dp) * sx
-                val hh = (popup.box.height() / 2f - 4f * dp) * sy
+                val hh = (popup.box.height() / 2f - 5f * dp) * sy
                 lensRect.set(cx - hw, cy - hh, cx + hw, cy + hh)
                 lens.draw(
-                    canvas, lensRect, hh, 1.06f, 10f * dp, 12f * dp,
-                    if (t.dark) 0x1AFFFFFF else 0x2EFFFFFF, t.dark, st[3],
+                    canvas, lensRect, hh, 1.06f, t,
+                    if (t.solid) t.accent else if (t.dark) 0x1AFFFFFF else 0x2EFFFFFF, st[3],
                 )
+                if (t.solid) popupItem()?.let { sel ->
+                    textPaint.color = 0xFFFFFFFF.toInt()
+                    textPaint.alpha = (255 * st[3]).toInt()
+                    textPaint.textSize = (if (sel.length > 2) 15f else 26f) * t.sp
+                    val fm = textPaint.fontMetrics
+                    canvas.drawText(sel, cx, cy - (fm.ascent + fm.descent) / 2, textPaint)
+                }
                 canvas.restore()
                 if (animations && (now() - popup.shownAt < 230 || popup.hideAt != 0L)) again = true
             }

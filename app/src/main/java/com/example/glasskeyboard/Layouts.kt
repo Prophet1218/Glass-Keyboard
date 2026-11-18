@@ -145,9 +145,12 @@ object Layouts {
         return out
     }
 
-    fun symbols(hu: Boolean, field: FieldKind, period: Boolean = false, extraRows: Int = 0, emoji: List<String> = emptyList()): KbLayout {
-        val rows = ArrayList<KbRow>(emojiRows(extraRows, emoji))
+    fun symbols(hu: Boolean, field: FieldKind, period: Boolean = false, extraRows: Int = 0, emoji: List<String> = emptyList(), numbersOnTop: Boolean = false): KbLayout {
+        val rows = ArrayList<KbRow>()
+        // with the number row on the letters, the digits stay exactly where they were
+        if (!numbersOnTop) rows += emojiRows(extraRows, emoji)
         rows += row("1 2 3 4 5 6 7 8 9 0", hu)
+        if (numbersOnTop) rows += emojiRows(extraRows, emoji)
         rows += row(if (hu) "- / : ; ( ) Ft & @ \"" else "- / : ; ( ) $ & @ \"", hu)
         val third = ArrayList<Key>()
         third += Key(KeyType.TO_MORE, "#+=", "", 1.5f)
@@ -158,9 +161,11 @@ object Layouts {
         return KbLayout(LayoutKind.SYMBOLS, rows)
     }
 
-    fun more(hu: Boolean, field: FieldKind, period: Boolean = false, extraRows: Int = 0, emoji: List<String> = emptyList()): KbLayout {
-        val rows = ArrayList<KbRow>(emojiRows(extraRows, emoji))
+    fun more(hu: Boolean, field: FieldKind, period: Boolean = false, extraRows: Int = 0, emoji: List<String> = emptyList(), numbersOnTop: Boolean = false): KbLayout {
+        val rows = ArrayList<KbRow>()
+        if (!numbersOnTop) rows += emojiRows(extraRows, emoji)
         rows += row("[ ] { } # % ^ * + =", hu)
+        if (numbersOnTop) rows += emojiRows(extraRows, emoji)
         rows += row(if (hu) "_ \\ | ~ < > € $ £ •" else "_ \\ | ~ < > € £ ¥ •", hu)
         val third = ArrayList<Key>()
         third += Key(KeyType.TO_SYMBOLS, "123", "", 1.5f)

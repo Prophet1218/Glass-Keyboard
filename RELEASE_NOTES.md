@@ -1,9 +1,6 @@
-## Glass Keyboard 0.0.5
+## Glass Keyboard 0.0.6
 
-- **Liquid glass lencse újraírva** (Kyant AndroidLiquidGlass modellje alapján): a belseje tisztán mutatja ami alatta van, csak a pereme töri meg a képet körív szerint, finom színszórással; nincs több torz, kifordult betű
-- **Ékezetválasztó mint liquid slider:** a lencse rugósan követi az ujjad, tartás közben kicsit megnő, mozgás közben a sebességgel nyúlik
-- **Javaslat kapszula:** megszűnt a dupla (szellem) szó, az üveg alatt csak a megtört szó látszik
-- **Javaslatra koppintás:** nincs vizuális effekt, csak a kaotikus rezgés
-- **123 / ABC váltás:** lassabb, lágy átformálódás – a gombok a régi helyükről úsznak az újra, a feliratok áttűnnek
-- **Ajánlott emojik** a 123 oldalak üres soraiban (gyakran használtak elöl)
-- **Animációk sebessége** csúszka (50–200%), finomított időzítések
+- **Üveghatás beállítások** a Glass Browserből: üveg típusa (folyékony / matt / kikapcsolva), árnyalat (rendszer / világos / sötét / átlátszó), üveg színe és erőssége, elmosás, fénytörés magassága és eltolása, színszóródás, sötétítés, körív, domború (3D) üveg, visszaállítás
+- **Ékezetválasztó kapszula alakú**, a lekerekítése illeszkedik a benne lévő üveglencséhez
+- **Javaslatra koppintás:** egyetlen sima haptikus jelzés, zörgés nélkül
+- **123 / ABC váltás:** a változatlan gombok (számsor, szóköz, return, törlés…) már nem villannak; számsor mellett a számok a helyükön maradnak, az emoji sor alájuk kerül

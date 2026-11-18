@@ -3,6 +3,25 @@ package com.example.glasskeyboard
 import android.content.Context
 import android.content.SharedPreferences
 
+/** Glass effect parameters (ranges as in Glass Browser). */
+data class GlassParams(
+    val hue: Int = 210,
+    /** 0..70 % */
+    val hueStrength: Int = 0,
+    /** 0..24 */
+    val blur: Int = 2,
+    /** 12..50 */
+    val refrHeight: Int = 30,
+    /** 20..120 */
+    val refrOffset: Int = 50,
+    /** 0..100 */
+    val dispersion: Int = 0,
+    /** 0..80 % */
+    val darken: Int = 0,
+    val rim: Boolean = true,
+    val convex: Boolean = false,
+)
+
 /** All settings of the keyboard in one place. */
 class Prefs(context: Context) {
     val sp: SharedPreferences = context.getSharedPreferences("glass_keyboard", Context.MODE_PRIVATE)
@@ -35,7 +54,7 @@ class Prefs(context: Context) {
     val numberRow get() = b(K_NUMBER_ROW, false)
     val periodKey get() = b(K_PERIOD_KEY, false)
     val animations get() = b(K_ANIM, true)
-    /** 0 = liquid glass, 1 = frosted glass */
+    /** 0 = liquid glass, 1 = frosted glass, 2 = off (solid) */
     val glassStyle get() = sp.getInt(K_GLASS, 0)
     /** height of the strip under the keys (globe, mic) in dp */
     val stripHeight get() = sp.getInt(K_STRIP_HEIGHT, 46)
@@ -54,12 +73,31 @@ class Prefs(context: Context) {
     /** long-press picker: 0 spring, 1 unfold sideways, 2 fade */
     val popupAnim get() = sp.getInt(K_POPUP_ANIM, 0)
     val chaos get() = b(K_CHAOS, true)
+    /** Glass effect settings (same set as in Glass Browser). */
+    fun glass() = GlassParams(
+        hue = sp.getInt(K_HUE, 210),
+        hueStrength = sp.getInt(K_HUE_STRENGTH, 0),
+        blur = sp.getInt(K_BLUR, 2),
+        refrHeight = sp.getInt(K_REFR_H, 30),
+        refrOffset = sp.getInt(K_REFR_OFF, 50),
+        dispersion = sp.getInt(K_DISP, 0),
+        darken = sp.getInt(K_GLASS_DARK, 0),
+        rim = b(K_RIM, true),
+        convex = b(K_CONVEX, false),
+    )
+
+    fun resetGlass() {
+        sp.edit().remove(K_GLASS).remove(K_THEME).remove(K_HUE).remove(K_HUE_STRENGTH).remove(K_BLUR)
+            .remove(K_REFR_H).remove(K_REFR_OFF).remove(K_DISP).remove(K_GLASS_DARK).remove(K_RIM).remove(K_CONVEX)
+            .remove(K_PANEL_OPACITY).remove(K_KEY_OPACITY).apply()
+    }
+
     /** animation speed in percent (100 = normal) */
     val animSpeed get() = sp.getInt(K_ANIM_SPEED, 100)
 
     /** 0 = off, 1 = light, 2 = strong */
     val haptics get() = sp.getInt(K_HAPTICS, 1)
-    /** 0 = follow system, 1 = light, 2 = dark */
+    /** 0 = follow system, 1 = light, 2 = dark, 3 = clear */
     val theme get() = sp.getInt(K_THEME, 0)
     /** key height in percent of the default */
     val keyHeight get() = sp.getInt(K_KEY_HEIGHT, 100)
@@ -103,5 +141,14 @@ class Prefs(context: Context) {
         const val K_POPUP_ANIM = "popup_anim"
         const val K_CHAOS = "chaos"
         const val K_ANIM_SPEED = "anim_speed"
+        const val K_HUE = "glass_hue"
+        const val K_HUE_STRENGTH = "glass_hue_strength"
+        const val K_BLUR = "glass_blur"
+        const val K_REFR_H = "glass_refraction_height"
+        const val K_REFR_OFF = "glass_refraction_offset"
+        const val K_DISP = "glass_dispersion"
+        const val K_GLASS_DARK = "glass_dark"
+        const val K_RIM = "glass_rim"
+        const val K_CONVEX = "glass_convex"
     }
 }

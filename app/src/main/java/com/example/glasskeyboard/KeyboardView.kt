@@ -246,6 +246,19 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
+    /** Same type, same label, same place (within a pixel). */
+    private fun sameKey(a: Key, b: Key): Boolean =
+        a.type == b.type && a.label == b.label &&
+                kotlin.math.abs(a.rect.left - b.rect.left) < 1.5f && kotlin.math.abs(a.rect.top - b.rect.top) < 1.5f &&
+                kotlin.math.abs(a.rect.right - b.rect.right) < 1.5f && kotlin.math.abs(a.rect.bottom - b.rect.bottom) < 1.5f
+
+    /** An old key that is still there, unchanged, on the new page. */
+    private fun stays(k: Key, rowIndex: Int): Boolean {
+        val rows = layout?.rows ?: return false
+        val row = rows.getOrNull(rowIndex) ?: return false
+        return row.keys.any { sameKey(k, it) }
+    }
+
     override fun onDraw(canvas: Canvas) {
         val l = layout ?: return
         val t = theme
@@ -266,9 +279,11 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             if (p > 0f && p < 1f) animating = true
             if (k in pressed && p < 1f) animating = true
             var r = k.rect
+            var steady = false
             if (sw < 1f && old != null) {
                 val src = sourceOf(old, ri, k)
-                if (src != null) {
+                steady = src != null && sameKey(src, k)
+                if (src != null && !steady) {
                     morphRect.set(
                         lerp(src.rect.left, k.rect.left, sw), lerp(src.rect.top, k.rect.top, sw),
                         lerp(src.rect.right, k.rect.right, sw), lerp(src.rect.bottom, k.rect.bottom, sw),
@@ -276,12 +291,19 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
                     r = morphRect
                 }
             }
+            // keys whose look does not change (digits, space, return…) stay perfectly still
+            val fade = labelAlpha
+            if (steady) labelAlpha = 255
             drawKey(canvas, k, p, t, r)
+            labelAlpha = fade
         }
         if (sw < 1f && old != null) {
             val keep = labelAlpha
             labelAlpha = (255 * (1f - sw / 0.6f).coerceIn(0f, 1f)).toInt()
-            if (labelAlpha > 0) for (row in old.rows) for (k in row.keys) drawLabel(canvas, k, t)
+            if (labelAlpha > 0) for ((ri, row) in old.rows.withIndex()) for (k in row.keys) {
+                if (stays(k, ri)) continue
+                drawLabel(canvas, k, t)
+            }
             labelAlpha = keep
         }
         if (showGlobe) drawStripIcon(canvas, globeKey, globeIcon, pressProgress(globeKey, globeKey in pressed, now), t)
