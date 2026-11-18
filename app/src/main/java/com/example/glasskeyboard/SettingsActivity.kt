@@ -141,6 +141,7 @@ class SettingsActivity : Activity() {
         glass.addView(choiceRow("Eszköztár gombjainak háttere", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_TOOL_GLASS, 0))
         glass.addView(choiceRow("Betűbuborék anyaga (gépeléskor)", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_PREVIEW_GLASS, 2))
         glass.addView(choiceRow("Hosszú nyomás menü (ékezetválasztó) anyaga", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_POPUP_GLASS, 0))
+        glass.addView(seekRow("Ékezetválasztó üvegének elmosása", Prefs.K_POPUP_BLUR, 0, 100, 45, ""))
         glass.addView(choiceRow("Kijelölő kapszula (javaslat és ékezetválasztó)", arrayOf("Liquid glass (fénytörés)", "Frosted glass (matt, elmosott)"), Prefs.K_LENS_STYLE, 0))
         glass.addView(hueRow("Üveg színe", Prefs.K_HUE, 210))
         glass.addView(seekRow("Szín erőssége (0 = színtelen üveg)", Prefs.K_HUE_STRENGTH, 0, 70, 0, ""))
@@ -153,12 +154,12 @@ class SettingsActivity : Activity() {
         glass.addView(switchRow("Körív az üvegen", "Vékony fényív az üvegfelületek (gombok, lap, kijelölő) szélén.", Prefs.K_RIM, true))
         glass.addView(switchRow("Domború (3D) üveg", "Az üvegfelületek domborúnak, vastagnak látszanak: fénycsillanás a peremen, erősebb fénytörés a széleken.", Prefs.K_CONVEX, false))
         glass.addView(actionRow("Alapértelmezett üvegbeállítások visszaállítása", "Az üveg típusa, árnyalata, színe, átlátszósága, az elmosás, a fénytörés és a színszóródás visszaáll az eredeti értékre.") {
-            AlertDialog.Builder(this).setMessage("Visszaállítod az üvegbeállításokat?")
+            dialog().setMessage("Visszaállítod az üvegbeállításokat?")
                 .setPositiveButton("Visszaállítás") { _, _ ->
                     prefs.resetGlass()
                     recreate()
                 }
-                .setNegativeButton("Mégse", null).show()
+                .setNegativeButton("Mégse", null).frosted()
         })
 
         // ---- look & feel
@@ -229,32 +230,60 @@ class SettingsActivity : Activity() {
         val ud = Shared.userDict(this, lang)
         val all = ud.all().filter { it.value >= 1 }
         if (all.isEmpty()) {
-            AlertDialog.Builder(this).setTitle(if (lang == "hu") "Magyar tanult szavak" else "English learned words")
-                .setMessage("Még nincs tanult szó.").setPositiveButton("OK", null).show()
+            dialog().setTitle(if (lang == "hu") "Magyar tanult szavak" else "English learned words")
+                .setMessage("Még nincs tanult szó.").setPositiveButton("OK", null).frosted()
             return
         }
         val labels = all.map { "${it.key}   ×${it.value}" }
-        AlertDialog.Builder(this)
+        dialog()
             .setTitle(if (lang == "hu") "Magyar tanult szavak (${all.size})" else "English learned words (${all.size})")
             .setAdapter(ArrayAdapter(this, android.R.layout.simple_list_item_1, labels)) { _, which ->
                 val w = all[which].key
-                AlertDialog.Builder(this).setMessage("Törlöd ezt: „$w”?")
+                dialog().setMessage("Törlöd ezt: „$w”?")
                     .setPositiveButton("Törlés") { _, _ ->
                         ud.remove(w)
                         Thread { ud.save() }.start()
                     }
-                    .setNegativeButton("Mégse", null).show()
+                    .setNegativeButton("Mégse", null).frosted()
             }
             .setNeutralButton("Összes törlése") { _, _ ->
-                AlertDialog.Builder(this).setMessage("Minden tanult szót törölsz ebben a nyelvben?")
+                dialog().setMessage("Minden tanult szót törölsz ebben a nyelvben?")
                     .setPositiveButton("Törlés") { _, _ ->
                         ud.clear()
                         Thread { ud.save() }.start()
                     }
-                    .setNegativeButton("Mégse", null).show()
+                    .setNegativeButton("Mégse", null).frosted()
             }
             .setPositiveButton("Bezárás", null)
-            .show()
+            .frosted()
+    }
+
+
+    // ------------------------------------------------------------------ frosted dialogs
+
+    private fun dialog() = AlertDialog.Builder(
+        this,
+        if (dark) android.R.style.Theme_DeviceDefault_Dialog_Alert else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert,
+    )
+
+    /** Shows the dialog as a frosted glass sheet: milky, rounded, the page blurred behind it. */
+    private fun AlertDialog.Builder.frosted(): AlertDialog {
+        val d = create()
+        d.window?.let { w ->
+            w.setBackgroundDrawable(GradientDrawable().apply {
+                setColor(if (dark) 0xB32A2C33.toInt() else 0xC7F6F7FA.toInt())
+                cornerRadius = 28 * dp
+                setStroke((1 * dp).toInt().coerceAtLeast(1), if (dark) 0x33FFFFFF else 0x99FFFFFF.toInt())
+            })
+            w.setDimAmount(if (dark) 0.25f else 0.12f)
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                w.addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                w.attributes = w.attributes.also { it.blurBehindRadius = (18 * dp).toInt() }
+                w.setBackgroundBlurRadius((36 * dp).toInt())
+            }
+        }
+        d.show()
+        return d
     }
 
     // ------------------------------------------------------------------ UI helpers
@@ -342,12 +371,12 @@ class SettingsActivity : Activity() {
         val l = labels(title, options.getOrElse(prefs.sp.getInt(key, def)) { options[0] })
         r.addView(l)
         r.setOnClickListener {
-            AlertDialog.Builder(this).setTitle(title)
+            dialog().setTitle(title)
                 .setSingleChoiceItems(options, prefs.sp.getInt(key, def)) { d, which ->
                     prefs.sp.edit().putInt(key, which).apply()
                     (l.getChildAt(1) as? TextView)?.text = options[which]
                     d.dismiss()
-                }.show()
+                }.frosted()
         }
         return r
     }

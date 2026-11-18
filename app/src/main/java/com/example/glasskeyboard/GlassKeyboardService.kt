@@ -382,12 +382,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     /**
-     * Colour of the strip under the keys (gesture handle): see-through where the sheet itself is
-     * drawn under it, otherwise the sheet's bottom colour with the sheet's own transparency, so it
-     * looks the same as the glass above it instead of a darker band.
+     * Colour of the strip under the keys (gesture handle): always the sheet's bottom colour, opaque.
+     * A see-through strip let the system's own black bar show through now and then (flicker).
      */
-    private fun navColor(t: GlassTheme): Int =
-        if ((root?.bottomInset ?: 0) > 0) android.graphics.Color.TRANSPARENT else t.panelBottom
+    private fun navColor(t: GlassTheme): Int = t.panelBottom or 0xFF000000.toInt()
 
     private fun styleNavBar(t: GlassTheme) {
         val w = window?.window ?: return
@@ -453,7 +451,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val t = theme ?: return
         if (root == null || !isInputViewShown) return
         window?.window?.let { navGuard.attach(it, navColor(t)) }
-        applyWindowBlur(t, force = true)
+        applyWindowBlur(t, force = false)
     }
 
     /** The keyboard as it looks now (sheet + suggestions + keys) at [scale]: the picker's glass shows it. */
@@ -543,6 +541,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         overlay.previewStyle = prefs.previewAnim
         overlay.popupStyle = prefs.popupAnim
         overlay.popupGlass = prefs.popupGlass
+        overlay.popupBlur = prefs.popupBlur / 100f
         overlay.previewGlass = prefs.previewGlass
         overlay.invalidateBackdrop()
         bar.animations = prefs.animations
@@ -1247,6 +1246,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             return
         }
         dictationTry = 0
+        dictationRetry = 0
         dictating = true
         startDictation()
     }
@@ -1288,40 +1288,50 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private val dictationErrors = ArrayList<String>()
 
     private fun startDictation() {
-        if (dictationTry == 0) {
+        if (dictationTry == 0 && dictationRetry == 0) {
             dictationOptions = recognizers()
             dictationErrors.clear()
             dictationLang = true
         }
         val options = dictationOptions
         if (dictationTry >= options.size) {
-            dictationFallback()
+            dictationFailed()
             return
-        }
-        recognizer?.let {
-            recognizer = null
-            try {
-                it.destroy()
-            } catch (_: Exception) {
-            }
         }
         val comp = options[dictationTry]
-        val rec = try {
-            if (comp == onDevice && Build.VERSION.SDK_INT >= 31) android.speech.SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
-            else if (comp != null) android.speech.SpeechRecognizer.createSpeechRecognizer(this, comp)
-            else android.speech.SpeechRecognizer.createSpeechRecognizer(this)
-        } catch (e: Exception) {
-            dictationErrors += "${recName(comp)}: ${e.javaClass.simpleName}"
-            nextRecognizer()
-            return
+        // keep the recognizer that worked last time (already connected to its service: no cold
+        // start, which is what made the first press fail); a fresh one only after an error
+        val reuse = recognizer != null && recognizerComp == comp && recognizerOk && dictationRetry == 0
+        val rec = if (reuse) recognizer!! else {
+            recognizer?.let {
+                recognizer = null
+                try {
+                    it.destroy()
+                } catch (_: Exception) {
+                }
+            }
+            try {
+                if (comp == onDevice && Build.VERSION.SDK_INT >= 31) android.speech.SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                else if (comp != null) android.speech.SpeechRecognizer.createSpeechRecognizer(this, comp)
+                else android.speech.SpeechRecognizer.createSpeechRecognizer(this)
+            } catch (e: Exception) {
+                dictationErrors += "${recName(comp)}: ${e.javaClass.simpleName}"
+                nextRecognizer(sameAgain = false)
+                return
+            }
         }
         recognizer = rec
+        recognizerComp = comp
+        recognizerOk = false
         heardSpeech = false
         rec.setRecognitionListener(object : android.speech.RecognitionListener {
             // callbacks of a recognizer that was replaced are ignored
             private fun current() = listening && recognizer === rec
             override fun onReadyForSpeech(params: android.os.Bundle?) {
-                if (current()) showDictation(if (hu) "Hallgatlak…" else "Listening…")
+                if (!current()) return
+                recognizerOk = true
+                dictationRetry = 0
+                showDictation(if (hu) "Hallgatlak…" else "Listening…")
             }
             override fun onBeginningOfSpeech() {
                 heardSpeech = true
@@ -1347,7 +1357,14 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                     return
                 }
                 dictationErrors += "${recName(comp)}: ${errorText(error)}"
-                nextRecognizer()
+                // busy / not connected yet / dropped connection: the same recognizer once or
+                // twice more (a cold Google service often fails the very first time)
+                val transient = error == android.speech.SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                    error == android.speech.SpeechRecognizer.ERROR_CLIENT || error == 11 ||
+                    error == android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
+                    error == android.speech.SpeechRecognizer.ERROR_SERVER ||
+                    error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                nextRecognizer(sameAgain = transient)
             }
 
             override fun onResults(results: android.os.Bundle?) {
@@ -1383,15 +1400,25 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             rec.startListening(intent)
         } catch (e: Exception) {
             dictationErrors += "${recName(comp)}: ${e.javaClass.simpleName}"
-            nextRecognizer()
+            nextRecognizer(sameAgain = true)
         }
     }
 
-    private fun nextRecognizer() {
+    private var dictationRetry = 0
+    private var recognizerComp: android.content.ComponentName? = null
+    /** the current recognizer reached "ready for speech" at least once */
+    private var recognizerOk = false
+
+    private fun nextRecognizer(sameAgain: Boolean) {
         dictationLang = true
-        dictationTry++
-        // a short pause lets the previous recognizer release the microphone
-        main.postDelayed({ if (dictating) startDictation() }, 120)
+        if (sameAgain && dictationRetry < 2) {
+            dictationRetry++
+        } else {
+            dictationRetry = 0
+            dictationTry++
+        }
+        // a short pause lets the previous attempt release the microphone / finish connecting
+        main.postDelayed({ if (dictating) startDictation() }, if (dictationRetry > 0) 350L else 150L)
     }
 
     private fun recName(c: android.content.ComponentName?) = when {
@@ -1400,40 +1427,15 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         else -> c.packageName.substringAfterLast('.')
     }
 
-    /**
-     * No recognizer worked inside the keyboard: use the phone's voice typing keyboard if there is
-     * one, otherwise the system's voice input screen (the text is typed when it closes).
-     */
-    private fun dictationFallback() {
+    /** No recognizer on the phone worked: say why (the keyboard does not switch to another app). */
+    private fun dictationFailed() {
         stopDictation()
         if (dictationErrors.isNotEmpty()) android.util.Log.w("GlassKeyboard", "dictation: " + dictationErrors.joinToString("; "))
-        val screen = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-        val hasScreen = try {
-            packageManager.resolveActivity(screen, 0) != null
-        } catch (_: Exception) {
-            false
-        }
-        if (!hasScreen) {
-            if (!switchToVoiceIme()) Toast.makeText(
-                this,
-                (if (hu) "Diktálás nem sikerült: " else "Dictation failed: ") + dictationErrors.joinToString("; ").ifEmpty { "?" },
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-        try {
-            startActivity(
-                android.content.Intent(this, VoiceActivity::class.java)
-                    .putExtra(VoiceActivity.EXTRA_HU, hu)
-                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)
-            )
-        } catch (_: Exception) {
-            Toast.makeText(
-                this,
-                (if (hu) "Diktálás nem sikerült: " else "Dictation failed: ") + dictationErrors.joinToString("; ").ifEmpty { "?" },
-                Toast.LENGTH_LONG
-            ).show()
-        }
+        Toast.makeText(
+            this,
+            (if (hu) "Diktálás nem sikerült: " else "Dictation failed: ") + dictationErrors.distinct().take(3).joinToString("; ").ifEmpty { "?" },
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     /** Text from the voice input screen: typed as soon as the field is back. */

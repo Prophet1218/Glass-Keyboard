@@ -120,8 +120,13 @@ class LiquidSlider(
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (44 * dp).toInt())
     }
 
-    private val trackLeft get() = thumbW / 2f
-    private val trackW get() = width - thumbW
+    /** room for the grown (1.5×) thumb at both ends, so it is never cut off */
+    private val trackLeft get() = thumbW * 0.8f
+    private val trackW get() = width - thumbW * 1.6f
+    private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private var downY = 0f
+    /** 0 undecided, 1 dragging the slider, 2 the user is scrolling the page */
+    private var mode = 0
 
     private fun drawTrack(c: Canvas, progress: Float) {
         val cy = height / 2f
@@ -162,35 +167,63 @@ class LiquidSlider(
         val v = (pos.velocity / 10f).coerceIn(-1f, 1f)
         val scX = sx.value / (1f - (abs(v) * 0.75f).coerceIn(0f, 0.2f))
         val scY = sy.value * (1f - (abs(v) * 0.25f).coerceIn(0f, 0.2f))
-        val cx = (trackLeft + trackW * pos.value).coerceIn(thumbW / 4f, width - thumbW / 4f)
+        val cx = trackLeft + trackW * pos.value
         thumb.draw(canvas, cx, height / 2f, thumbW, thumbH, scX, scY, press.value, b, 10f * dp, 14f * dp, dark)
         if (moving) postInvalidateOnAnimation() else last = 0L
     }
 
+    /**
+     * Nothing changes until the finger clearly moves sideways (drag) or lifts without moving (tap
+     * on the track): a vertical swipe scrolls the settings page and never moves the slider.
+     */
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
-                pressed = true
+                mode = 0
                 downX = e.x
-                val thumbX = trackLeft + trackW * target
-                // touching the track away from the thumb jumps there; touching the thumb drags it
-                if (abs(e.x - thumbX) > thumbW) target = ((e.x - trackLeft) / trackW).coerceIn(0f, 1f)
+                downY = e.y
                 startTarget = target
-                update()
             }
             MotionEvent.ACTION_MOVE -> {
-                target = (startTarget + (e.x - downX) / trackW).coerceIn(0f, 1f)
-                update()
+                val dx = e.x - downX
+                val dy = e.y - downY
+                if (mode == 0) {
+                    if (abs(dy) > slop && abs(dy) > abs(dx)) {
+                        mode = 2
+                        return false
+                    }
+                    if (abs(dx) > slop && abs(dx) > abs(dy)) {
+                        mode = 1
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        pressed = true
+                        val thumbX = trackLeft + trackW * startTarget
+                        // grabbing the track away from the thumb starts from where the finger is
+                        if (abs(downX - thumbX) > thumbW) startTarget = ((downX - trackLeft) / trackW).coerceIn(0f, 1f)
+                    }
+                }
+                if (mode == 1) {
+                    target = (startTarget + dx / trackW).coerceIn(0f, 1f)
+                    update()
+                }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+            MotionEvent.ACTION_UP -> {
+                if (mode == 0) {
+                    // a tap on the track jumps there
+                    target = ((e.x - trackLeft) / trackW).coerceIn(0f, 1f)
+                    update()
+                }
+                mode = 0
                 pressed = false
                 parent?.requestDisallowInterceptTouchEvent(false)
             }
+            MotionEvent.ACTION_CANCEL -> {
+                mode = 0
+                pressed = false
+            }
         }
         postInvalidateOnAnimation()
-        return true
+        return mode != 2
     }
 
     private fun update() {
@@ -277,33 +310,65 @@ class LiquidToggle(context: Context, checked: Boolean, private val dark: Boolean
         if (moving) postInvalidateOnAnimation() else last = 0L
     }
 
+    private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private var downY = 0f
+    private var scrolling = false
+    private val pressLater = Runnable {
+        if (!scrolling) {
+            pressed = true
+            postInvalidateOnAnimation()
+        }
+    }
+
+    /** A vertical swipe that starts on the switch scrolls the page and leaves the switch alone. */
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
-                pressed = true
                 dragged = false
+                scrolling = false
                 downX = e.x
+                downY = e.y
                 startFraction = fraction
+                // the glass thumb grows only once it is clear this is not a scroll
+                postDelayed(pressLater, 90)
             }
             MotionEvent.ACTION_MOVE -> {
-                if (abs(e.x - downX) > 3 * dp) dragged = true
-                if (dragged) fraction = (startFraction + (e.x - downX) / dragW).coerceIn(0f, 1f)
+                val dx = e.x - downX
+                val dy = e.y - downY
+                if (!dragged && !scrolling) {
+                    if (abs(dy) > slop && abs(dy) > abs(dx)) {
+                        scrolling = true
+                        removeCallbacks(pressLater)
+                        pressed = false
+                        postInvalidateOnAnimation()
+                        return false
+                    }
+                    if (abs(dx) > slop) {
+                        dragged = true
+                        pressed = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                }
+                if (dragged) fraction = (startFraction + dx / dragW).coerceIn(0f, 1f)
             }
             MotionEvent.ACTION_UP -> {
+                removeCallbacks(pressLater)
                 pressed = false
                 parent?.requestDisallowInterceptTouchEvent(false)
-                val now = if (dragged) fraction >= 0.5f else !checked
-                performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                set(now)
+                if (!scrolling) {
+                    val now = if (dragged) fraction >= 0.5f else !checked
+                    performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                    set(now)
+                }
             }
             MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(pressLater)
                 pressed = false
                 fraction = if (checked) 1f else 0f
             }
         }
         postInvalidateOnAnimation()
-        return true
+        return !scrolling
     }
 }

@@ -278,6 +278,11 @@ class GlassTheme(
     /** The keyboard sheet from [top] to the bottom of the view. */
     fun drawPanel(c: Canvas, left: Float, top: Float, right: Float, bottom: Float) {
         val r = 24f * dp
+        // the paint is shared with the keys and the suggestion bar: its alpha (left over from the
+        // last colour used there) would multiply the gradient, and the sheet would fade out the
+        // next time it is redrawn (e.g. after the 123 key). Start from a fully opaque paint.
+        fill.color = Color.WHITE
+        fill.colorFilter = null
         fill.shader = LinearGradient(0f, top, 0f, bottom, panelTop, panelBottom, Shader.TileMode.CLAMP)
         path.reset()
         tmp.set(left, top, right, bottom + r)

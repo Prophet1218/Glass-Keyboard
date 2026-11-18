@@ -33,6 +33,8 @@ class PopupOverlay(context: Context) : View(context) {
     var popupStyle = 0
     /** long-press picker material: 0 liquid glass, 1 frosted glass, 2 solid */
     var popupGlass = 0
+    /** long-press menu glass: 0 clear … 1 strongly blurred / milky */
+    var popupBlur = 0.45f
     /** typing balloon material: 0 liquid glass, 1 frosted glass, 2 solid */
     var previewGlass = 2
     private var backdropDirty = true
@@ -247,7 +249,11 @@ class PopupOverlay(context: Context) : View(context) {
         backSoft = Bitmap.createScaledBitmap(small, maxOf(1, w1 / 2), maxOf(1, h1 / 2), true)
     }
 
-    private fun liquidVeil(t: GlassTheme): Int = if (t.dark) 0x8C3A3B40.toInt() else 0x99FFFFFF.toInt()
+    private fun liquidVeil(t: GlassTheme): Int {
+        val base = if (t.dark) 0x8C3A3B40.toInt() else 0x99FFFFFF.toInt()
+        val a = (Color.alpha(base) * (0.25f + 1.45f * popupBlur)).toInt().coerceIn(0, 240)
+        return (base and 0x00FFFFFF) or (a shl 24)
+    }
 
     private fun popupTint(t: GlassTheme, mat: Int = popupGlass): Int = when (mat) {
         0 -> if (t.dark) 0x99595A60.toInt() else 0xB3FFFFFF.toInt()
@@ -256,18 +262,28 @@ class PopupOverlay(context: Context) : View(context) {
     }
 
     /** The picker body: frosted (blurred keys + milky tint) or the glass base of liquid. */
-    private fun drawPopupBody(c: Canvas, t: GlassTheme, shape: Path, alpha: Float, mat: Int = popupGlass) {
+    private fun drawPopupBody(c: Canvas, t: GlassTheme, shape: Path, alpha: Float, mat: Int = popupGlass, menu: Boolean = true) {
         val soft = backSoft
         c.save()
         c.clipPath(shape)
+        // the menu's blur slider: from clear glass (sharp keys, thin tint) to milky frosted glass
+        val v = if (menu) popupBlur else 0.5f
         if (soft != null && mat != 2) {
             val sc = width.toFloat() / soft.width
             backMatrix.setScale(sc, sc)
             bmpPaint.alpha = (255 * alpha).toInt()
             c.drawBitmap(soft, backMatrix, bmpPaint)
+            val sharp = backSharp
+            if (menu && mat == 1 && sharp != null && v < 0.6f) {
+                backMatrix.setScale(2f, 2f)
+                bmpPaint.alpha = (255 * alpha * (1f - v / 0.6f)).toInt()
+                c.drawBitmap(sharp, backMatrix, bmpPaint)
+            }
         }
-        paint.color = popupTint(t, mat)
-        paint.alpha = (Color.alpha(popupTint(t, mat)) * alpha).toInt()
+        val tint = popupTint(t, mat)
+        paint.color = tint
+        val ta = if (menu && mat != 2) (0.35f + 1.2f * v).coerceAtMost(1.45f) else 1f
+        paint.alpha = (Color.alpha(tint) * ta * alpha).toInt().coerceIn(0, 255)
         c.drawPaint(paint)
         c.restore()
     }
@@ -490,7 +506,7 @@ class PopupOverlay(context: Context) : View(context) {
         canvas.restore()
         val mat = if (b === popup) popupGlass else previewGlass
         if (mat != 2 && backSoft != null) {
-            drawPopupBody(canvas, t, b.shape, st[3], mat)
+            drawPopupBody(canvas, t, b.shape, st[3], mat, b === popup)
             if (mat == 0) {
                 // liquid: the bubble itself is a lens over the keys, bending them at its rim
                 backSharp?.let { boxLens.setContent(it, 0f, 0f, 2f) }
@@ -499,7 +515,7 @@ class PopupOverlay(context: Context) : View(context) {
                 val bend = if (b === popup) 0.8f else 0.35f
                 boxLens.drawRaw(
                     canvas, b.box, rad, 1f, minOf(t.lensHeight, rad * 0.6f), t.lensAmount * bend,
-                    t.lensDispersion, 0f, t.params.rim, t.params.convex,
+                    t.lensDispersion, if (b === popup) popupBlur * 7f * dp else 0f, t.params.rim, t.params.convex,
                     popupTint(t, mat), t.dark, st[3], shadow = false,
                 )
                 // a light veil over the refracted keys keeps the letters readable

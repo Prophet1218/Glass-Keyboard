@@ -342,7 +342,12 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         paint.alpha = (255 * alpha).toInt()
         paint.textSize = 17f * t.sp
         paint.typeface = if (c.highlight) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-        val s = TextUtils.ellipsize(c.shown, paint, w - 14 * dp, TextUtils.TruncateAt.END).toString()
+        // a long word shrinks to stay inside the glass capsule, clear of its bending rim
+        // (otherwise its ends sit under the rim and look smeared)
+        val avail = w - (if (c.highlight) 40f else 18f) * dp
+        val min = 12f * t.sp
+        while (paint.measureText(c.shown) > avail && paint.textSize > min) paint.textSize = maxOf(min, paint.textSize * 0.93f)
+        val s = TextUtils.ellipsize(c.shown, paint, avail, TextUtils.TruncateAt.END).toString()
         val fm = paint.fontMetrics
         val cx = l + w / 2
         val cy = h / 2 + 1 * dp
