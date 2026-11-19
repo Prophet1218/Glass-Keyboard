@@ -24,6 +24,10 @@ import android.widget.TextView
 
 /** Setup steps, a test field and all settings — built in code, in the same glass style. */
 class SettingsActivity : Activity() {
+    companion object {
+        private const val K_SCROLL = "settings_scroll"
+    }
+
 
     private lateinit var prefs: Prefs
     private lateinit var content: LinearLayout
@@ -66,8 +70,40 @@ class SettingsActivity : Activity() {
         if (hasFocus) refreshStatus()
     }
 
+    private var scroll: ScrollView? = null
+    private var testOut: TextView? = null
+    private var testDict: Dictation? = null
+
+    /** Runs dictation right here (in the foreground), to see whether the phone's recognizers work. */
+    private fun testDictation() {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 7)
+            return
+        }
+        testDict?.let { if (it.active) { it.stop(); return } }
+        val d = Dictation(this, android.os.Handler(mainLooper), object : Dictation.Callbacks {
+            override fun status(text: String) { testOut?.text = text }
+            override fun partial(text: String) { testOut?.text = "🎤 $text" }
+            override fun result(text: String) { testOut?.text = "✅ $text" }
+            override fun end(message: String?) { if (message != null) testOut?.text = "❌ $message" }
+        })
+        testDict = d
+        d.start(Ui.hu)
+    }
+
+    override fun onDestroy() {
+        testDict?.destroy()
+        super.onDestroy()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        scroll?.let { prefs.sp.edit().putInt(K_SCROLL, it.scrollY).apply() }
+    }
+
     private fun build() {
         val scroll = ScrollView(this)
+        this.scroll = scroll
         scroll.isFillViewport = true
         scroll.fitsSystemWindows = true
         content = LinearLayout(this)
@@ -75,26 +111,39 @@ class SettingsActivity : Activity() {
         content.setPadding((18 * dp).toInt(), (22 * dp).toInt(), (18 * dp).toInt(), (40 * dp).toInt())
         scroll.addView(content)
         setContentView(scroll)
+        // the page itself holds the focus, so the test field does not pull the view to the top
+        content.isFocusableInTouchMode = true
+        content.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
+        // back where the page was left last time
+        val y = prefs.sp.getInt(K_SCROLL, 0)
+        scroll.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                if (content.height <= 0) return
+                scroll.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                content.requestFocus()
+                scroll.scrollTo(0, y)
+            }
+        })
 
         content.addView(text("Glass Keyboard", 32f, textColor, bold = true))
-        content.addView(text("Folyékony üveg billentyűzet • magyar és angol • v${version()}", 14f, softColor).also {
+        content.addView(text(T("Folyékony üveg billentyűzet • magyar és angol") + " • v${version()}", 14f, softColor).also {
             (it.layoutParams as? LinearLayout.LayoutParams)?.bottomMargin = (14 * dp).toInt()
         })
 
         // ---- setup
-        val setup = card("Beállítás")
+        val setup = card(T("Beállítás"))
         status1 = text("", 15f, textColor)
         status2 = text("", 15f, textColor)
         setup.addView(status1)
-        setup.addView(button("1. Bekapcsolás a rendszerben") {
+        setup.addView(button(T("1. Bekapcsolás a rendszerben")) {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
         })
         setup.addView(status2)
-        setup.addView(button("2. Glass Keyboard kiválasztása") {
+        setup.addView(button(T("2. Glass Keyboard kiválasztása")) {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
         })
         val test = EditText(this)
-        test.hint = "Próbáld ki itt…"
+        test.hint = T("Próbáld ki itt…")
         test.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
         test.setTextColor(textColor)
         test.setHintTextColor(softColor)
@@ -104,8 +153,8 @@ class SettingsActivity : Activity() {
         setup.addView(test, lp(top = 10))
 
         // ---- languages
-        val langs = card("Nyelvek")
-        langs.addView(switchRow("Magyar", "QWERTZ kiosztás, magyar szótár és javítás", Prefs.K_HU, true) { on ->
+        val langs = card(T("Nyelvek"))
+        langs.addView(switchRow(T("Magyar"), T("QWERTZ kiosztás, magyar szótár és javítás"), Prefs.K_HU, true) { on ->
             if (!on && !prefs.englishEnabled) {
                 prefs.englishEnabled = true
                 recreate()
@@ -117,76 +166,77 @@ class SettingsActivity : Activity() {
                 recreate()
             }
         })
-        langs.addView(hint("Váltás: a földgömb gombbal a billentyűzet alatt. Hosszan nyomva: billentyűzetváltó."))
+        langs.addView(hint(T("Váltás: a földgömb gombbal a billentyűzet alatt. Hosszan nyomva: billentyűzetváltó.")))
 
         // ---- typing
-        val typing = card("Gépelés")
-        typing.addView(switchRow("Automatikus javítás", "Elgépelések és hiányzó ékezetek javítása szóköznél (jo → jó, koszonom → köszönöm). Visszatörléssel visszavonható.", Prefs.K_AUTOCORRECT, true))
-        typing.addView(switchRow("Eszköztár a javaslatsávban", "Amíg nem gépelsz: emoji, vágólap, nyelv, billentyűzet elrejtése, beállítások. Gépeléskor szójavaslatok; a › gombbal előhozható.", Prefs.K_TOOLBAR, true))
-        typing.addView(switchRow("Javaslatsáv", "Szójavaslatok és következő szó a billentyűk fölött", Prefs.K_SUGGESTIONS, true))
-        typing.addView(switchRow("Szavak tanulása", "Megjegyzi a saját szavaidat és szófordulataidat", Prefs.K_LEARN, true))
-        typing.addView(switchRow("Számsor", "Külön számsor (1–0) a betűk fölött", Prefs.K_NUMBER_ROW, false))
-        typing.addView(switchRow("Pont a szóköz mellett", "„.” gomb a szóköz jobb oldalán (hosszan nyomva: , ? ! … : ;)", Prefs.K_PERIOD_KEY, false))
-        typing.addView(switchRow("Ékezetsor", "Külön sor az á é í ó ö ő ú ü ű betűknek (magyarnál)", Prefs.K_ACCENT_ROW, false))
-        typing.addView(switchRow("Automatikus nagybetű", "Mondat elején nagybetűvel kezd", Prefs.K_AUTOCAPS, true))
-        typing.addView(switchRow("Dupla szóköz = pont", "Két szóköz gyorsan egymás után: „. ”", Prefs.K_DOUBLE_SPACE, true))
-        typing.addView(switchRow("Okos idézőjelek", "\" helyett „ és ” (angolnál “ ”)", Prefs.K_SMART_QUOTES, true))
-        typing.addView(switchRow("Emoji javaslatok", "Pl. pizza → 🍕, szeretlek → ❤️", Prefs.K_EMOJI_SUGG, true))
-        typing.addView(switchRow("Szóköz mint kurzor", "Szóközt hosszan nyomva vagy elhúzva mozgatható a kurzor", Prefs.K_SPACE_CURSOR, true))
+        val typing = card(T("Gépelés"))
+        typing.addView(switchRow(T("Automatikus javítás"), T("Elgépelések és hiányzó ékezetek javítása szóköznél (jo → jó, koszonom → köszönöm). Visszatörléssel visszavonható."), Prefs.K_AUTOCORRECT, true))
+        typing.addView(switchRow(T("Eszköztár a javaslatsávban"), T("Amíg nem gépelsz: emoji, vágólap, nyelv, billentyűzet elrejtése, beállítások. Gépeléskor szójavaslatok; a › gombbal előhozható."), Prefs.K_TOOLBAR, true))
+        typing.addView(switchRow(T("Javaslatsáv"), T("Szójavaslatok és következő szó a billentyűk fölött"), Prefs.K_SUGGESTIONS, true))
+        typing.addView(switchRow(T("Szavak tanulása"), T("Megjegyzi a saját szavaidat és szófordulataidat"), Prefs.K_LEARN, true))
+        typing.addView(switchRow(T("Számsor"), T("Külön számsor (1–0) a betűk fölött"), Prefs.K_NUMBER_ROW, false))
+        typing.addView(switchRow(T("Pont a szóköz mellett"), T("„.” gomb a szóköz jobb oldalán (hosszan nyomva: , ? ! … : ;)"), Prefs.K_PERIOD_KEY, false))
+        typing.addView(switchRow(T("Ékezetsor"), T("Külön sor az á é í ó ö ő ú ü ű betűknek (magyarnál)"), Prefs.K_ACCENT_ROW, false))
+        typing.addView(switchRow(T("Automatikus nagybetű"), T("Mondat elején nagybetűvel kezd"), Prefs.K_AUTOCAPS, true))
+        typing.addView(switchRow(T("Dupla szóköz = pont"), T("Két szóköz gyorsan egymás után: „. ”"), Prefs.K_DOUBLE_SPACE, true))
+        typing.addView(switchRow(T("Okos idézőjelek"), T("\" helyett „ és ” (angolnál “ ”)"), Prefs.K_SMART_QUOTES, true))
+        typing.addView(switchRow(T("Emoji javaslatok"), T("Pl. pizza → 🍕, szeretlek → ❤️"), Prefs.K_EMOJI_SUGG, true))
+        typing.addView(switchRow(T("Szóköz mint kurzor"), T("Szóközt hosszan nyomva vagy elhúzva mozgatható a kurzor"), Prefs.K_SPACE_CURSOR, true))
 
         // ---- glass (same set as in Glass Browser)
-        val glass = card("Üveghatás")
-        glass.addView(choiceRow("Üveg típusa", arrayOf("Folyékony üveg (fénytörés)", "Matt üveg (elmosás, fénytörés nélkül)", "Kikapcsolva (tömör felületek, üveg nélkül)"), Prefs.K_GLASS, 0))
-        glass.addView(choiceRow("Üveg árnyalata", arrayOf("Rendszer szerint (világos / sötét)", "Világos", "Sötét", "Átlátszó"), Prefs.K_THEME, 0))
-        glass.addView(choiceRow("Eszköztár gombjainak háttere", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_TOOL_GLASS, 0))
-        glass.addView(choiceRow("Betűbuborék anyaga (gépeléskor)", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_PREVIEW_GLASS, 2))
-        glass.addView(choiceRow("Hosszú nyomás menü (ékezetválasztó) anyaga", arrayOf("Liquid glass – átlátszó, fénytörő", "Frosted glass – matt, elmosott", "Tömör"), Prefs.K_POPUP_GLASS, 0))
-        glass.addView(seekRow("Üveg elmosása (ékezetválasztó, betűbuborék, eszköztár)", Prefs.K_POPUP_BLUR, 0, 100, 45, ""))
-        glass.addView(choiceRow("Kijelölő kapszula (javaslat és ékezetválasztó)", arrayOf("Liquid glass (fénytörés)", "Frosted glass (matt, elmosott)"), Prefs.K_LENS_STYLE, 0))
-        glass.addView(hueRow("Üveg színe", Prefs.K_HUE, 210))
-        glass.addView(seekRow("Szín erőssége (0 = színtelen üveg)", Prefs.K_HUE_STRENGTH, 0, 70, 0, ""))
-        glass.addView(seekRow("Elmosás", Prefs.K_BLUR, 0, 24, 2, ""))
-        glass.addView(seekRow("Fénytörés magassága", Prefs.K_REFR_H, 12, 50, 30, ""))
-        glass.addView(seekRow("Fénytörés eltolása", Prefs.K_REFR_OFF, 20, 120, 50, ""))
-        glass.addView(seekRow("Színszóródás", Prefs.K_DISP, 0, 100, 0, ""))
-        glass.addView(seekRow("Üveg sötétítése", Prefs.K_GLASS_DARK, 0, 80, 0, ""))
-        glass.addView(seekRow("Gombok sötétítése", Prefs.K_KEY_DARK, 0, 80, 0, ""))
-        glass.addView(switchRow("Körív az üvegen", "Vékony fényív az üvegfelületek (gombok, lap, kijelölő) szélén.", Prefs.K_RIM, true))
-        glass.addView(switchRow("Domború (3D) üveg", "Az üvegfelületek domborúnak, vastagnak látszanak: fénycsillanás a peremen, erősebb fénytörés a széleken.", Prefs.K_CONVEX, false))
-        glass.addView(actionRow("Alapértelmezett üvegbeállítások visszaállítása", "Az üveg típusa, árnyalata, színe, átlátszósága, az elmosás, a fénytörés és a színszóródás visszaáll az eredeti értékre.") {
-            dialog().setMessage("Visszaállítod az üvegbeállításokat?")
-                .setPositiveButton("Visszaállítás") { _, _ ->
+        val glass = card(T("Üveghatás"))
+        glass.addView(choiceRow(T("Üveg típusa"), arrayOf(T("Folyékony üveg (fénytörés)"), T("Matt üveg (elmosás, fénytörés nélkül)"), T("Kikapcsolva (tömör felületek, üveg nélkül)")), Prefs.K_GLASS, 0))
+        glass.addView(choiceRow(T("Üveg árnyalata"), arrayOf(T("Rendszer szerint (világos / sötét)"), T("Világos"), T("Sötét"), T("Átlátszó")), Prefs.K_THEME, 0))
+        glass.addView(choiceRow(T("Eszköztár gombjainak háttere"), arrayOf(T("Liquid glass – átlátszó, fénytörő"), T("Frosted glass – matt, elmosott"), T("Tömör")), Prefs.K_TOOL_GLASS, 0))
+        glass.addView(choiceRow(T("Betűbuborék anyaga (gépeléskor)"), arrayOf(T("Liquid glass – átlátszó, fénytörő"), T("Frosted glass – matt, elmosott"), T("Tömör")), Prefs.K_PREVIEW_GLASS, 2))
+        glass.addView(choiceRow(T("Hosszú nyomás menü (ékezetválasztó) anyaga"), arrayOf(T("Liquid glass – átlátszó, fénytörő"), T("Frosted glass – matt, elmosott"), T("Tömör")), Prefs.K_POPUP_GLASS, 0))
+        glass.addView(seekRow(T("Üveg elmosása (ékezetválasztó, betűbuborék, eszköztár)"), Prefs.K_POPUP_BLUR, 0, 100, 45, ""))
+        glass.addView(choiceRow(T("Kijelölő kapszula (javaslat és ékezetválasztó)"), arrayOf(T("Liquid glass (fénytörés)"), T("Frosted glass (matt, elmosott)")), Prefs.K_LENS_STYLE, 0))
+        glass.addView(hueRow(T("Üveg színe"), Prefs.K_HUE, 210))
+        glass.addView(seekRow(T("Szín erőssége (0 = színtelen üveg)"), Prefs.K_HUE_STRENGTH, 0, 70, 0, ""))
+        glass.addView(seekRow(T("Elmosás"), Prefs.K_BLUR, 0, 24, 2, ""))
+        glass.addView(seekRow(T("Fénytörés magassága"), Prefs.K_REFR_H, 12, 50, 30, ""))
+        glass.addView(seekRow(T("Fénytörés eltolása"), Prefs.K_REFR_OFF, 20, 120, 50, ""))
+        glass.addView(seekRow(T("Színszóródás"), Prefs.K_DISP, 0, 100, 0, ""))
+        glass.addView(seekRow(T("Üveg sötétítése"), Prefs.K_GLASS_DARK, 0, 80, 0, ""))
+        glass.addView(seekRow(T("Gombok sötétítése"), Prefs.K_KEY_DARK, 0, 80, 0, ""))
+        glass.addView(switchRow(T("Körív az üvegen"), T("Vékony fényív az üvegfelületek (gombok, lap, kijelölő) szélén."), Prefs.K_RIM, true))
+        glass.addView(switchRow(T("Domború (3D) üveg"), T("Az üvegfelületek domborúnak, vastagnak látszanak: fénycsillanás a peremen, erősebb fénytörés a széleken."), Prefs.K_CONVEX, false))
+        glass.addView(actionRow(T("Alapértelmezett üvegbeállítások visszaállítása"), T("Az üveg típusa, árnyalata, színe, átlátszósága, az elmosás, a fénytörés és a színszóródás visszaáll az eredeti értékre.")) {
+            dialog().setMessage(T("Visszaállítod az üvegbeállításokat?"))
+                .setPositiveButton(T("Visszaállítás")) { _, _ ->
                     prefs.resetGlass()
                     recreate()
                 }
-                .setNegativeButton("Mégse", null).frosted()
+                .setNegativeButton(T("Mégse"), null).frosted()
         })
 
         // ---- look & feel
-        val look = card("Megjelenés és visszajelzés")
-        look.addView(seekRow("Háttér átlátszatlansága", Prefs.K_PANEL_OPACITY, 0, 100, 100, "%"))
-        look.addView(seekRow("Gombok átlátszatlansága", Prefs.K_KEY_OPACITY, 15, 100, 100, "%"))
-        look.addView(seekRow("Billentyűmagasság", Prefs.K_KEY_HEIGHT, 80, 130, 100, "%"))
-        look.addView(seekRow("Alsó sáv magassága (földgömb, mikrofon)", Prefs.K_STRIP_HEIGHT, 28, 80, 46, " dp"))
-        look.addView(switchRow("Animációk", "Felugró buborékok, rugalmas ékezetválasztó, áttűnések", Prefs.K_ANIM, true))
-        look.addView(choiceRow("Javaslatok animációja", arrayOf("Áttűnés", "Felúszás", "Nagyítás", "Gördülés", "Nincs"), Prefs.K_SUGG_ANIM, 0))
-        look.addView(choiceRow("Gombérintés effekt", arrayOf("Kiemelkedés", "Benyomódás", "Fénylés", "Nincs"), Prefs.K_PRESS_ANIM, 0))
-        look.addView(choiceRow("Betűbuborék gépeléskor", arrayOf("Rugós felugrás", "Felúszás", "Áttűnés", "Azonnali"), Prefs.K_PREVIEW_ANIM, 0))
-        look.addView(choiceRow("Hosszú nyomás (ékezetválasztó)", arrayOf("Rugós kinyílás", "Szétnyílás oldalra", "Áttűnés"), Prefs.K_POPUP_ANIM, 0))
-        look.addView(switchRow("Rezgés javaslatra koppintáskor", "Egy rövid, határozott haptikus jelzés", Prefs.K_CHAOS, true))
-        look.addView(seekRow("Animációk sebessége (nagyobb = gyorsabb)", Prefs.K_ANIM_SPEED, 50, 200, 100, "%"))
-        look.addView(choiceRow("Megnyílási animáció", arrayOf("Felcsúszás, fokozatosan lassulva", "Rugós felcsúszás", "Áttűnés és nagyítás", "Egyenletes felcsúszás", "Nincs"), Prefs.K_OPEN_ANIM, 0))
-        look.addView(seekRow("Megnyílás időtartama (kisebb = gyorsabb)", Prefs.K_OPEN_MS, 100, 900, 320, " ms"))
-        look.addView(switchRow("Billentyű-előnézet", "Felnagyított betű buborék gépeléskor", Prefs.K_PREVIEW, true))
-        look.addView(choiceRow("Rezgés", arrayOf("Ki", "Enyhe", "Erős"), Prefs.K_HAPTICS, 1))
-        look.addView(switchRow("Hang", "Kattanó hang gépeléskor", Prefs.K_SOUND, false))
-        look.addView(switchRow("Mikrofon gomb", "Hangalapú bevitel (pl. Google hangbevitel) a billentyűzet alatt", Prefs.K_MIC, true))
+        val look = card(T("Megjelenés és visszajelzés"))
+        look.addView(seekRow(T("Háttér átlátszatlansága"), Prefs.K_PANEL_OPACITY, 0, 100, 100, "%"))
+        look.addView(choiceRow(T("Navigációs sáv (a billentyűzet alatt)"), arrayOf(T("Üveg – átlátszó, mint a billentyűzet háttere"), T("A billentyűzet színe – tömör")), Prefs.K_NAV_STYLE, 0))
+        look.addView(seekRow(T("Gombok átlátszatlansága"), Prefs.K_KEY_OPACITY, 15, 100, 100, "%"))
+        look.addView(seekRow(T("Billentyűmagasság"), Prefs.K_KEY_HEIGHT, 80, 130, 100, "%"))
+        look.addView(seekRow(T("Alsó sáv magassága (földgömb, mikrofon)"), Prefs.K_STRIP_HEIGHT, 28, 80, 46, " dp"))
+        look.addView(switchRow(T("Animációk"), T("Felugró buborékok, rugalmas ékezetválasztó, áttűnések"), Prefs.K_ANIM, true))
+        look.addView(choiceRow(T("Javaslatok animációja"), arrayOf(T("Áttűnés"), T("Felúszás"), T("Nagyítás"), T("Gördülés"), T("Nincs")), Prefs.K_SUGG_ANIM, 0))
+        look.addView(choiceRow(T("Gombérintés effekt"), arrayOf(T("Kiemelkedés"), T("Benyomódás"), T("Fénylés"), T("Nincs")), Prefs.K_PRESS_ANIM, 0))
+        look.addView(choiceRow(T("Betűbuborék gépeléskor"), arrayOf(T("Rugós felugrás"), T("Felúszás"), T("Áttűnés"), T("Azonnali")), Prefs.K_PREVIEW_ANIM, 0))
+        look.addView(choiceRow(T("Hosszú nyomás (ékezetválasztó)"), arrayOf(T("Rugós kinyílás"), T("Szétnyílás oldalra"), T("Áttűnés")), Prefs.K_POPUP_ANIM, 0))
+        look.addView(switchRow(T("Rezgés javaslatra koppintáskor"), T("Egy rövid, határozott haptikus jelzés"), Prefs.K_CHAOS, true))
+        look.addView(seekRow(T("Animációk sebessége (nagyobb = gyorsabb)"), Prefs.K_ANIM_SPEED, 50, 200, 100, "%"))
+        look.addView(choiceRow(T("Megnyílási animáció"), arrayOf(T("Felcsúszás, fokozatosan lassulva"), T("Rugós felcsúszás"), T("Áttűnés és nagyítás"), T("Egyenletes felcsúszás"), T("Nincs")), Prefs.K_OPEN_ANIM, 0))
+        look.addView(seekRow(T("Megnyílás időtartama (kisebb = gyorsabb)"), Prefs.K_OPEN_MS, 100, 900, 320, " ms"))
+        look.addView(switchRow(T("Billentyű-előnézet"), T("Felnagyított betű buborék gépeléskor"), Prefs.K_PREVIEW, true))
+        look.addView(choiceRow(T("Rezgés"), arrayOf(T("Ki"), T("Enyhe"), T("Erős")), Prefs.K_HAPTICS, 1))
+        look.addView(switchRow(T("Hang"), T("Kattanó hang gépeléskor"), Prefs.K_SOUND, false))
+        look.addView(switchRow(T("Mikrofon gomb"), T("Hangalapú bevitel (pl. Google hangbevitel) a billentyűzet alatt"), Prefs.K_MIC, true))
 
         // ---- GIF
         val gif = card("GIF")
-        gif.addView(hint("A Tenor GIF szolgáltatást a Google 2026. június 30-án lezárta a külső alkalmazások elől, ezért a billentyűzet a KLIPY-t használja (ugyanolyan GIF-kereső). Ehhez egy ingyenes API kulcs kell: regisztrálj a partner.klipy.com oldalon, hozz létre egy platformot, és másold ide a kulcsot."))
+        gif.addView(hint(T("A Tenor GIF szolgáltatást a Google 2026. június 30-án lezárta a külső alkalmazások elől, ezért a billentyűzet a KLIPY-t használja (ugyanolyan GIF-kereső). Ehhez egy ingyenes API kulcs kell: regisztrálj a partner.klipy.com oldalon, hozz létre egy platformot, és másold ide a kulcsot.")))
         val keyField = EditText(this)
-        keyField.hint = "KLIPY API kulcs"
+        keyField.hint = T("KLIPY API kulcs")
         keyField.setText(prefs.klipyKey)
         keyField.isSingleLine = true
         keyField.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
@@ -195,17 +245,38 @@ class SettingsActivity : Activity() {
         keyField.background = rounded(if (dark) 0x22FFFFFF else 0x99FFFFFF.toInt(), 14f)
         keyField.setPadding((14 * dp).toInt(), (12 * dp).toInt(), (14 * dp).toInt(), (12 * dp).toInt())
         gif.addView(keyField, lp(top = 8))
-        gif.addView(button("Kulcs mentése") {
+        gif.addView(button(T("Kulcs mentése")) {
             prefs.sp.edit().putString(Prefs.K_KLIPY, keyField.text.toString().trim()).apply()
-            android.widget.Toast.makeText(this, "Elmentve", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, T("Elmentve"), android.widget.Toast.LENGTH_SHORT).show()
         })
 
         // ---- learned words
-        val words = card("Tanult szavak")
-        words.addView(actionRow("Magyar tanult szavak", "Megtekintés, törlés") { showWords("hu") })
+        val words = card(T("Tanult szavak"))
+        words.addView(actionRow(T("Magyar tanult szavak"), T("Megtekintés, törlés")) { showWords("hu") })
         words.addView(actionRow("English learned words", "View, delete") { showWords("en") })
 
-        content.addView(hint("A szótárak a wordfreq és az OpenSubtitles (FrequencyWords) adataiból készültek (CC BY-SA 4.0). Minden a telefonon marad; a billentyűzet nem használ internetet."))
+        // ---- diagnostics
+        val diag = card(T("Hibakeresés"))
+        diag.addView(hint(T("Ha a diktálás vagy a navigációs sáv nem jól működik, itt látszik, mi történt. Készíts róla képernyőképet, vagy másold ki.")))
+        diag.addView(button(T("Diktálás próbája itt")) { testDictation() })
+        testOut = text("", 14f, textColor)
+        diag.addView(testOut)
+        val log = text(DiagLog.text(this).ifEmpty { T("(üres)") }, 11f, softColor)
+        log.typeface = Typeface.MONOSPACE
+        log.setTextIsSelectable(true)
+        diag.addView(log, lp(top = 8))
+        diag.addView(button(T("Napló frissítése")) { log.text = DiagLog.text(this).ifEmpty { T("(üres)") } })
+        diag.addView(button(T("Napló másolása")) {
+            (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("Glass Keyboard log", DiagLog.text(this)))
+            android.widget.Toast.makeText(this, T("Kimásolva"), android.widget.Toast.LENGTH_SHORT).show()
+        })
+        diag.addView(button(T("Napló törlése")) {
+            DiagLog.clear(this)
+            log.text = T("(üres)")
+        })
+
+        content.addView(hint(T("A szótárak a wordfreq és az OpenSubtitles (FrequencyWords) adataiból készültek (CC BY-SA 4.0). Minden a telefonon marad; a billentyűzet nem használ internetet.")))
     }
 
     private fun refreshStatus() {
@@ -214,8 +285,8 @@ class SettingsActivity : Activity() {
         val enabled = imm.enabledInputMethodList.any { it.packageName == packageName }
         val current = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD) ?: ""
         val selected = current.startsWith("$packageName/")
-        status1.text = if (enabled) "✅  Bekapcsolva" else "⚪  Még nincs bekapcsolva"
-        status2.text = if (selected) "✅  Kiválasztva, használatban" else "⚪  Még nincs kiválasztva"
+        status1.text = if (enabled) T("✅  Bekapcsolva") else T("⚪  Még nincs bekapcsolva")
+        status2.text = if (selected) T("✅  Kiválasztva, használatban") else T("⚪  Még nincs kiválasztva")
     }
 
     private fun version(): String = try {
@@ -230,31 +301,31 @@ class SettingsActivity : Activity() {
         val ud = Shared.userDict(this, lang)
         val all = ud.all().filter { it.value >= 1 }
         if (all.isEmpty()) {
-            dialog().setTitle(if (lang == "hu") "Magyar tanult szavak" else "English learned words")
-                .setMessage("Még nincs tanult szó.").setPositiveButton("OK", null).frosted()
+            dialog().setTitle(if (lang == "hu") T("Magyar tanult szavak") else "English learned words")
+                .setMessage(T("Még nincs tanult szó.")).setPositiveButton("OK", null).frosted()
             return
         }
         val labels = all.map { "${it.key}   ×${it.value}" }
         dialog()
-            .setTitle(if (lang == "hu") "Magyar tanult szavak (${all.size})" else "English learned words (${all.size})")
+            .setTitle(if (lang == "hu") T("Magyar tanult szavak") + " (${all.size})" else "English learned words (${all.size})")
             .setAdapter(ArrayAdapter(this, android.R.layout.simple_list_item_1, labels)) { _, which ->
                 val w = all[which].key
-                dialog().setMessage("Törlöd ezt: „$w”?")
-                    .setPositiveButton("Törlés") { _, _ ->
+                dialog().setMessage((if (Ui.hu) "Törlöd ezt: „$w”?" else "Delete “$w”?"))
+                    .setPositiveButton(T("Törlés")) { _, _ ->
                         ud.remove(w)
                         Thread { ud.save() }.start()
                     }
-                    .setNegativeButton("Mégse", null).frosted()
+                    .setNegativeButton(T("Mégse"), null).frosted()
             }
-            .setNeutralButton("Összes törlése") { _, _ ->
-                dialog().setMessage("Minden tanult szót törölsz ebben a nyelvben?")
-                    .setPositiveButton("Törlés") { _, _ ->
+            .setNeutralButton(T("Összes törlése")) { _, _ ->
+                dialog().setMessage(T("Minden tanult szót törölsz ebben a nyelvben?"))
+                    .setPositiveButton(T("Törlés")) { _, _ ->
                         ud.clear()
                         Thread { ud.save() }.start()
                     }
-                    .setNegativeButton("Mégse", null).frosted()
+                    .setNegativeButton(T("Mégse"), null).frosted()
             }
-            .setPositiveButton("Bezárás", null)
+            .setPositiveButton(T("Bezárás"), null)
             .frosted()
     }
 

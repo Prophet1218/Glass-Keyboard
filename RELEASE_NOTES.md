@@ -1,6 +1,8 @@
-## Glass Keyboard 0.0.15
+## Glass Keyboard 0.0.16
 
-- **Navigációs sáv:** nem tömör többé. A billentyűzet üveglapja lenyúlik a kézmozdulat-sáv alá is, így ugyanaz az üveg, és követi a háttér átlátszóságát. Alacsony átlátszóságnál az látszik, amit az alkalmazás rajzol oda (sok alkalmazás saját, gyakran fekete sávot)
-- **Diktálás:** a billentyűzet maga veszi fel a hangot (Android 13+), és ezt adja át a felismerőnek. Eddig a háttérben futó Google felismerő bizonyos helyzetekben (pl. képernyőfelvétel közben) csak csendet kapott: „Hallgatlak…”, majd „Nem hallottam semmit”. Ha egy felismerő nem fogadja a hangot, magától a következőre vált; a telefon offline felismerőjéhez letölti a magyar modellt
-- **Kijelölő kapszula:** a szó betűmérete animálva nő/csökken, ahogy a szó hosszabb vagy rövidebb lesz
-- **Üveg elmosása csúszka:** most az ékezetválasztóra, a betűbuborékra és az eszköztár gombjaira is hat
+- **Dictation rewritten** (`Dictation.kt`): tries Google's recognizer first (recording by itself, then fed with the keyboard's own recording), then the phone's offline recognizer, then the system default and the rest. Google's service is connected in advance when the keyboard opens, so the first press no longer hits a cold service. An empty result, silence or a recognizer that ignores the audio moves on to the next one, and every failure now shows a message (also in the suggestion bar)
+- **Navigation bar area:** new setting – *Glass* (see-through like the keyboard background, default) or *Keyboard color* (solid). The keyboard also clears any background the system or the phone maker puts into the keyboard window's navigation bar views
+- **Diagnostics** in the settings: a log of dictation attempts and of the keyboard window's layout, a dictation test that runs inside the settings, and a copy button
+- **Settings keep their scroll position** when opened again
+- **Phone language by default:** the settings and the default keyboard language follow the phone's language (Hungarian), otherwise English
+- README, release notes and build workflow are now in English

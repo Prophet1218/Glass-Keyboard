@@ -1,6 +1,6 @@
-# Minden feltöltés (push) után a GitHub lefordítja az APK-t, és kiadásként (Release) közzéteszi,
-# így telefonról közvetlenül letölthető és telepíthető: a repó "Releases" részében a legfrissebb.
-name: APK építés
+# On every push GitHub builds the APK and publishes it as a release, so it can be downloaded
+# and installed straight from the phone: the newest one is under "Releases".
+name: Build APK
 
 on:
   push:
@@ -24,17 +24,17 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: APK fordítása
+      - name: Build APK
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Verzió
+      - name: Version
         id: ver
         run: echo "name=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
-      - name: Átnevezés
+      - name: Rename
         run: cp app/build/outputs/apk/release/app-release.apk GlassKeyboard-${{ steps.ver.outputs.name }}.apk
 
-      - name: Régi kiadások törlése (csak a legújabb marad)
+      - name: Delete old releases (keep only the newest)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -44,7 +44,7 @@ jobs:
             fi
           done
 
-      - name: Kiadás (letölthető APK)
+      - name: Release (downloadable APK)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.name }}

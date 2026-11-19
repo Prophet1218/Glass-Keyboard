@@ -50,15 +50,38 @@ class NavBarGuard {
             if (w.navigationBarColor != color) w.navigationBarColor = color
             if (Build.VERSION.SDK_INT >= 29 && w.isNavigationBarContrastEnforced) w.isNavigationBarContrastEnforced = false
         }
+        // the window's own nav bar colour view and any (also phone-maker) navigation view that
+        // the system put directly into the keyboard window get the keyboard's colour
+        for (i in 0 until d.childCount) {
+            val c = d.getChildAt(i)
+            if (c.id == android.R.id.navigationBarBackground || (c !is ViewGroup && c.javaClass.name.contains("Navigation", true))) tint(c)
+        }
         var f = frame
         if (f == null || !f.isAttachedToWindow || f.rootView !== d) {
             f = find(d, 0)
             frame = f
         }
         if (f == null) return
-        val bg = f.background
+        tint(f)
+        // its inner bar views should not paint a background of their own either
+        if (f is ViewGroup) clearInner(f, 0)
+    }
+
+    private fun tint(v: View) {
+        val bg = v.background
         if (bg is android.graphics.drawable.ColorDrawable && bg.color == color) return
-        f.setBackgroundColor(color)
+        if (bg == null && color == 0) return
+        v.setBackgroundColor(color)
+    }
+
+    private fun clearInner(g: ViewGroup, depth: Int) {
+        if (depth > 2) return
+        for (i in 0 until g.childCount) {
+            val c = g.getChildAt(i)
+            val bg = c.background
+            if (bg is android.graphics.drawable.ColorDrawable && bg.color != 0) c.background = null
+            if (c is ViewGroup) clearInner(c, depth + 1)
+        }
     }
 
     private fun find(g: ViewGroup, depth: Int): View? {

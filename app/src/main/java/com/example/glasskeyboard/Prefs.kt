@@ -40,7 +40,7 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putBoolean(K_EN, v).apply()
     /** "hu" or "en": the language used last. */
     var language: String
-        get() = sp.getString(K_LANG, "hu") ?: "hu"
+        get() = sp.getString(K_LANG, null) ?: if (java.util.Locale.getDefault().language == "hu") "hu" else "en"
         set(v) = sp.edit().putString(K_LANG, v).apply()
 
     val accentRow get() = b(K_ACCENT_ROW, false)
@@ -55,6 +55,8 @@ class Prefs(context: Context) {
     val spaceCursor get() = b(K_SPACE_CURSOR, true)
     val sound get() = b(K_SOUND, false)
     val showMic get() = b(K_MIC, true)
+    /** strip under the keys (gesture handle): 0 glass like the sheet, 1 the keyboard's solid colour */
+    val navStyle get() = sp.getInt(K_NAV_STYLE, 0)
     val numberRow get() = b(K_NUMBER_ROW, false)
     val periodKey get() = b(K_PERIOD_KEY, false)
     val animations get() = b(K_ANIM, true)
@@ -143,6 +145,7 @@ class Prefs(context: Context) {
         const val K_SPACE_CURSOR = "space_cursor"
         const val K_SOUND = "sound"
         const val K_MIC = "mic"
+        const val K_NAV_STYLE = "nav_style"
         const val K_HAPTICS = "haptics"
         const val K_THEME = "theme"
         const val K_KEY_HEIGHT = "key_height"
