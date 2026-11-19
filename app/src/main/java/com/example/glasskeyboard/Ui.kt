@@ -18,6 +18,7 @@ object Ui {
     fun t(huText: String): String = if (hu) huText else EN[huText] ?: huText
 
     private val EN = hashMapOf(
+        "Javítás erőssége (kisebb = óvatosabb, nagyobb = bátrabb)" to "Autocorrect strength (lower = careful, higher = bold)",
         "Térköz a billentyűzet alján (feljebb emeli a gombokat)" to "Space at the bottom of the keyboard (raises the keys)",
         "Gombok sarkainak kerekítése (betűbuborékra is)" to "Key corner radius (also the key preview)",
         "A billentyűzet felső sarkainak kerekítése" to "Keyboard top corner radius",

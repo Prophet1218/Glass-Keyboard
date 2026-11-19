@@ -669,7 +669,8 @@ public final class Engine {
         if (accentFix != null) morphValid = false;
         r.typedValid = dictValid || morphValid;
         int len = lower.length();
-        double mc = maxCost(len);
+        // aggressiveness: how far a correction may be from what was typed (×0.8 … ×1.2)
+        double mc = maxCost(len) * (0.8 + 0.4 * aggr);
         HashMap<String, Cand> cands = search(lower, mc, true);
         addUserCandidates(lower, mc, true, cands);
         if (len >= 4) addSplit(lower, cands);
@@ -694,7 +695,7 @@ public final class Engine {
             // A real word was typed: only put back missing accents when the accented form is far more common.
             if (best != null && accentOnly(lower, best.word) && user.count(lower) < UserDict.KNOWN) {
                 int ft = dict.freq(lower);
-                if (ft > 0 && best.freq >= ft + (verified ? 80 : 45) && best.score > score(new Cand(lower, 0, ft, false), prev) + 1.2) {
+                if (ft > 0 && best.freq >= ft + (int) ((verified ? 80 : 45) * (1.4 - 0.8 * aggr)) && best.score > score(new Cand(lower, 0, ft, false), prev) + 1.2) {
                     correction = best.word;
                 }
             }
@@ -714,8 +715,8 @@ public final class Engine {
                 int ft = dict.freq(lower);
                 boolean dropsAccent = looseKey(lower).equals(looseKey(best.word)) && !accentsKept(lower, best.word);
                 if (verified) {
-                    if (ft < 80 && best.cost <= 1.0 && best.freq >= ft + 100 && !dropsAccent && best.word.indexOf(' ') < 0) correction = best.word;
-                } else if (ft < 100 && best.cost <= 1.3 && best.freq >= ft + 60 && !dropsAccent) correction = best.word;
+                    if (ft < 55 + 50 * aggr && best.cost <= 0.8 + 0.4 * aggr && best.freq >= ft + 130 - 60 * aggr && !dropsAccent && best.word.indexOf(' ') < 0) correction = best.word;
+                } else if (ft < 80 + 40 * aggr && best.cost <= 1.0 + 0.6 * aggr && best.freq >= ft + 80 - 40 * aggr && !dropsAccent) correction = best.word;
             }
         } else if (accentFix != null) {
             // The same word with its accents is in the dictionary ("diktalas" → "diktálás",
@@ -727,7 +728,7 @@ public final class Engine {
             // The big dictionary holds almost every real form, each confirmed by the spell
             // checker: an unknown word that only looks inflected ("országnk" = ország + n + k) is
             // far more likely a typo of a close, confirmed word.
-            if (correction == null && best != null && best.cost <= 1.0 && best.freq >= 70 && dict.verified(best.word)) correction = best.word;
+            if (correction == null && best != null && best.cost <= 0.7 + 0.6 * aggr && best.freq >= 90 - 40 * aggr && dict.verified(best.word)) correction = best.word;
             // …or put back the accents of an inflected form ("nyomasakor" → "nyomásakor")
             if (correction == null && hungarian) {
                 String restored = restoreAccents(lower);
@@ -816,10 +817,38 @@ public final class Engine {
     }
 
     /** A learned word counts as valid; a learned accent-less typo only when the user kept it on purpose. */
+    /** An accent-less word ("mukodik") counts as the user's own only after many explicit keeps. */
+    static final int ACCENT_TRUSTED = 12;
+
     private boolean userValid(String lower) {
         int c = user.count(lower);
         if (c < UserDict.KNOWN) return false;
-        return c >= TRUSTED || !accentTypo(lower);
+        return c >= (accentTypo(lower) ? ACCENT_TRUSTED : TRUSTED) || !accentTypo(lower);
+    }
+
+    /**
+     * One-off clean-up: accent-less words learned earlier ("mukodik"), which stopped the accents
+     * from being put back. Removed unless they were kept on purpose many times.
+     */
+    public synchronized int pruneAccentTypos() {
+        int removed = 0;
+        for (Map.Entry<String, Integer> e : user.all()) {
+            if (e.getValue() < ACCENT_TRUSTED && accentTypo(e.getKey())) {
+                user.remove(e.getKey());
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    // ---------------------------------------------------------------- aggressiveness
+
+    /** 0 = careful … 1 = bold; 0.5 is the default behaviour. */
+    private double aggr = 0.5;
+
+    /** How readily typos are corrected (setting, 0–100). */
+    public synchronized void setAggressiveness(int percent) {
+        aggr = Math.max(0, Math.min(100, percent)) / 100.0;
     }
 
     /**
@@ -866,6 +895,7 @@ public final class Engine {
     public void learnRejected(String wordLower) {
         if (wordLower.isEmpty()) return;
         int c = user.count(wordLower);
-        if (c < TRUSTED) user.addWord(wordLower, TRUSTED - c);
+        int want = accentTypo(wordLower) ? ACCENT_TRUSTED : TRUSTED;
+        if (c < want) user.addWord(wordLower, want - c);
     }
 }

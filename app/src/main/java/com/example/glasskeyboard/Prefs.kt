@@ -57,6 +57,8 @@ class Prefs(context: Context) {
     val showMic get() = false
     /** extra space below the last key row (above the gesture handle), dp */
     val bottomGap get() = sp.getInt(K_BOTTOM_GAP, 0)
+    /** autocorrect aggressiveness, 0 careful … 100 bold */
+    val acStrength get() = sp.getInt(K_AC_STRENGTH, 50)
     /** backspace right after an autocorrection brings back what was typed */
     val undoCorrection get() = b(K_UNDO_CORRECT, true)
     /** corner radius of the keys and the key preview balloon, dp */
@@ -159,6 +161,7 @@ class Prefs(context: Context) {
         const val K_UI_LANG = "ui_lang"
         const val K_BG = "background"
         const val K_BOTTOM_GAP = "bottom_gap"
+        const val K_AC_STRENGTH = "ac_strength"
         const val K_UNDO_CORRECT = "undo_correct"
         const val K_KEY_RADIUS = "key_radius"
         const val K_PANEL_RADIUS = "panel_radius"

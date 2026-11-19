@@ -298,7 +298,19 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             emptyList()
         }
         val e = Engine(l == "hu", Dict(buf), Shared.userDict(this, l), proper)
+        e.setAggressiveness(prefs.acStrength)
         // 0.0.13: drop typos that older versions learned by mistake (once per language)
+        // 1.3: learned accent-less words ("mukodik") kept the accents from being put back
+        val flag2 = "pruned_accents_v130_$l"
+        if (!prefs.sp.getBoolean(flag2, false)) {
+            prefs.sp.edit().putBoolean(flag2, true).apply()
+            worker.execute {
+                try {
+                    if (e.pruneAccentTypos() > 0) Shared.userDict(this, l).save()
+                } catch (_: Exception) {
+                }
+            }
+        }
         val flag = "pruned_typos_v13_$l"
         if (!prefs.sp.getBoolean(flag, false)) {
             prefs.sp.edit().putBoolean(flag, true).apply()
@@ -600,6 +612,10 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val langs = enabledLangs()
         if (lang !in langs) lang = langs[0]
         applyTheme()
+        try {
+            engine().setAggressiveness(prefs.acStrength)
+        } catch (_: Exception) {
+        }
 
         val type = info.inputType
         val cls = type and InputType.TYPE_MASK_CLASS

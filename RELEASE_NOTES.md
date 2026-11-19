@@ -1,5 +1,4 @@
-## Glass Keyboard 1.2.0
+## Glass Keyboard 1.3.0
 
-- **Targets Android 16 (SDK 36)** instead of Android 14, like WM Keyboard. From Android 15 the system treats older apps differently around the system bars; this may be what kept the area under the gesture handle black behind the see-through keyboard
-- The **keyboard bottom edge (navigation bar)** option is back under Background and colors: fully see-through glass, glass fading to solid, or solid keyboard colour
-- Build tools updated (Android Gradle Plugin 8.11, Gradle 8.13)
+- **Accents put back reliably:** accent-less words the keyboard had learned earlier ("mukodik") made it stop correcting them – that is why it seemed to work only sometimes. They are removed once, and an accent-less word now counts as your own only after you kept it (undo) on purpose; such a keep marks it strongly so it stays
+- **Autocorrect strength** slider (Typing and correction): lower is careful (corrects only clear typos, leaves rare words alone), higher is bold (corrects bigger typos and rarer words). The middle is the current behaviour

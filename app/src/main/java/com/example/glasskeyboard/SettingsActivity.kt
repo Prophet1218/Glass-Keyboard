@@ -156,6 +156,7 @@ class SettingsActivity : Activity() {
         // ---- 3. typing & correction
         val typing = section("typing", T("Gépelés és javítás"), T("Automatikus javítás, javaslatok, nagybetű, írásjelek"))
         typing.addView(switchRow(T("Automatikus javítás"), T("Szóköznél kijavítja az elgépelést és a hiányzó ékezetet (jo → jó, koszonom → köszönöm). Visszatörléssel visszavonható."), Prefs.K_AUTOCORRECT, true))
+        typing.addView(seekRow(T("Javítás erőssége (kisebb = óvatosabb, nagyobb = bátrabb)"), Prefs.K_AC_STRENGTH, 0, 100, 50, ""))
         typing.addView(switchRow(T("Visszatörlés visszavonja a javítást"), T("Javítás után az első visszatörlés visszahozza, amit eredetileg beírtál. Kikapcsolva a visszatörlés egyszerűen töröl."), Prefs.K_UNDO_CORRECT, true))
         typing.addView(switchRow(T("Szójavaslatok"), T("Három javaslat a billentyűk fölött: a beírt szó, a javítás és egy másik lehetőség, utána a következő szó"), Prefs.K_SUGGESTIONS, true))
         typing.addView(switchRow(T("Emoji javaslatok"), T("Illő emoji a javaslatok között (pizza → 🍕, szeretlek → ❤️)"), Prefs.K_EMOJI_SUGG, true))
