@@ -47,6 +47,9 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
     private var toolLevel = 1f
     private var toolFrame = 0L
     private var toolPressed = -1
+    /** press state of each toolbar button: springs to 1 while held, back (with a small bounce) after */
+    private val toolSprings = Array(TOOLS) { Spring(0f, 600f, 0.55f) }
+    private var toolFrameAt = 0L
     private val chevW get() = 40f * dp
 
     /** background of the toolbar buttons: 0 liquid glass, 1 frosted glass, 2 solid */
@@ -186,10 +189,35 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             t.iconFill.color = col
             t.icon.alpha = (Color.alpha(col) * alpha).toInt()
             t.iconFill.alpha = t.icon.alpha
-            toolIcon(c, i, w * i + w / 2, cy, 22 * dp, t)
+            val sc = toolScale(i)
+            val cx = w * i + w / 2
+            c.save()
+            c.scale(sc, sc, cx, cy)
+            toolIcon(c, i, cx, cy, 22 * dp, t)
+            c.restore()
         }
         t.icon.alpha = 255
         t.iconFill.alpha = 255
+    }
+
+    /** Size of button [i] now: grows while pressed, the icon with it (iOS liquid glass style). */
+    private fun toolScale(i: Int): Float = 1f + 0.16f * toolSprings[i].value
+
+    /** Advances the press springs; true while any of them still moves. */
+    private fun stepToolSprings(): Boolean {
+        val now = SystemClock.uptimeMillis()
+        val dt = if (toolFrameAt == 0L) 0.016f else ((now - toolFrameAt) / 1000f).coerceIn(0f, 0.05f)
+        toolFrameAt = now
+        var moving = false
+        for (i in 0 until TOOLS) {
+            val target = if (i == toolPressed) 1f else 0f
+            if (!animations) {
+                toolSprings[i].value = target
+                toolSprings[i].velocity = 0f
+            } else if (toolSprings[i].step(target, dt * Anim.speed)) moving = true
+        }
+        if (!moving) toolFrameAt = 0L
+        return moving
     }
 
     /** Icons sit in the middle of the visible bar (a touch lower than the view's centre). */
@@ -201,6 +229,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         val cy = toolCy()
         val bw = minOf(w - 10 * dp, 52 * dp)
         val bh = 34 * dp
+        val moving = stepToolSprings()
         // icons into a layer: the liquid glass buttons refract them
         var layer = iconLayer
         if (toolGlass == 0 && !t.solid && width > 0 && height > 0) {
@@ -214,25 +243,26 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         }
         for (i in 0 until TOOLS) {
             val cx = w * i + w / 2
-            val press = if (i == toolPressed) 1f else 0f
-            val grow = 1f + 0.08f * press
+            val press = toolSprings[i].value.coerceAtLeast(0f)
+            val grow = toolScale(i)
             toolRect.set(cx - bw / 2 * grow, cy - bh / 2 * grow, cx + bw / 2 * grow, cy + bh / 2 * grow)
             val r = toolRect.height() / 2f
             when {
                 toolGlass == 2 || t.solid -> {
                     t.fill.shader = null
-                    t.fill.color = if (i == toolPressed) t.keySpecialPressed else t.keySpecial
+                    t.fill.color = GlassTheme.mixRgb(t.keySpecial, t.keySpecialPressed, press.coerceAtMost(1f)) or (t.keySpecial and 0xFF000000.toInt())
                     t.fill.alpha = (Color.alpha(t.fill.color) * alpha).toInt()
                     c.drawRoundRect(toolRect, r, r, t.fill)
                     t.fill.alpha = 255
                 }
                 toolGlass == 1 -> toolLens.drawRaw(
                     c, toolRect, r, 1f, 0.5f, 0f, 0f, 0f, t.params.rim, t.params.convex,
-                    scaled(if (t.dark) 0x33FFFFFF else 0x99FFFFFF.toInt()), t.dark, alpha,
+                    brighten(scaled(if (t.dark) 0x33FFFFFF else 0x99FFFFFF.toInt()), press), t.dark, alpha,
                 )
+                // pressed liquid glass bends a little more, like a drop being pushed
                 else -> toolLens.drawRaw(
-                    c, toolRect, r, 1f, minOf(t.lensHeight, r * 0.6f), t.lensAmount * 0.4f, t.lensDispersion, 0f,
-                    t.params.rim, t.params.convex, scaled(if (t.dark) 0x1FFFFFFF else 0x4DFFFFFF), t.dark, alpha,
+                    c, toolRect, r, 1f, minOf(t.lensHeight, r * 0.6f), t.lensAmount * (0.4f + 0.35f * press), t.lensDispersion, 0f,
+                    t.params.rim, t.params.convex, brighten(scaled(if (t.dark) 0x1FFFFFFF else 0x4DFFFFFF), press), t.dark, alpha,
                 )
             }
         }
@@ -243,12 +273,21 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
             c.save()
             for (i in 0 until TOOLS) {
                 val cx = w * i + w / 2
-                toolRect.set(cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2)
+                val g = toolScale(i)
+                toolRect.set(cx - bw / 2 * g, cy - bh / 2 * g, cx + bw / 2 * g, cy + bh / 2 * g)
                 c.clipOutRect(toolRect)
             }
             drawIcons(c, alpha, t)
             c.restore()
         }
+        if (moving) postInvalidateOnAnimation()
+    }
+
+    /** The glass tint, a little lighter while pressed. */
+    private fun brighten(c: Int, press: Float): Int {
+        if (press <= 0f) return c
+        val a = (Color.alpha(c) + (0x30 * press)).toInt().coerceAtMost(255)
+        return (c and 0x00FFFFFF) or (a shl 24)
     }
 
     /** Draws the three suggestion slots; returns true while something is animating. */
@@ -421,6 +460,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         }
         val left = sugLeft()
         if (e.actionMasked == MotionEvent.ACTION_DOWN && toolbarEnabled && e.x < left) {
+            performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP, android.view.HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING)
             forced = true
             toolPressed = -1
             invalidate()
