@@ -1,8 +1,6 @@
-## Glass Keyboard 0.0.14
+## Glass Keyboard 0.0.15
 
-- **Háttér eltűnése 123-nál – megtalált hiba:** a billentyűzet lapja egy közös ecsetet használt a gombokkal, és a gombok utolsó (áttetsző) színe „rámaradt”. Amikor a lapot újra kellett rajzolni (pl. 123 után), szinte átlátszó lett. Most minden rajzolásnál teljes erővel indul, így a háttér megmarad
-- **Navigációs sáv:** mindig a billentyűzet aljának színe, nem villog többé (az átlátszó sáv mögül néha a rendszer fekete sávja látszott ki)
-- **Diktálás:** mindig a billentyűzeten belül fut, a Google ablaka nem ugrik fel. Az első nyomásra jellemző „hideg indítás” hibánál ugyanazt a felismerőt újrapróbálja, a működő felismerőt megtartja a következő diktáláshoz
-- **Ékezetválasztó:** új „Ékezetválasztó üvegének elmosása” csúszka (átlátszó üvegtől a tejüvegig)
-- **Kijelölő kapszula:** hosszú szónál a betűk kisebbek lesznek, és a kapszulán belül maradnak, nem csúsznak a torzító peremre
-- **Beállítások:** a csúszkák kapszulája a szélén sem vágódik le; görgetés közben a kapcsolók és csúszkák nem állítódnak el (csak oldalirányú húzás vagy koppintás állítja őket); a felugró menük frosted glass hátteret kaptak
+- **Navigációs sáv:** nem tömör többé. A billentyűzet üveglapja lenyúlik a kézmozdulat-sáv alá is, így ugyanaz az üveg, és követi a háttér átlátszóságát. Alacsony átlátszóságnál az látszik, amit az alkalmazás rajzol oda (sok alkalmazás saját, gyakran fekete sávot)
+- **Diktálás:** a billentyűzet maga veszi fel a hangot (Android 13+), és ezt adja át a felismerőnek. Eddig a háttérben futó Google felismerő bizonyos helyzetekben (pl. képernyőfelvétel közben) csak csendet kapott: „Hallgatlak…”, majd „Nem hallottam semmit”. Ha egy felismerő nem fogadja a hangot, magától a következőre vált; a telefon offline felismerőjéhez letölti a magyar modellt
+- **Kijelölő kapszula:** a szó betűmérete animálva nő/csökken, ahogy a szó hosszabb vagy rövidebb lesz
+- **Üveg elmosása csúszka:** most az ékezetválasztóra, a betűbuborékra és az eszköztár gombjaira is hat

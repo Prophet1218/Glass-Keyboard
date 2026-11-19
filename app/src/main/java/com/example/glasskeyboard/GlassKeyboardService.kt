@@ -382,10 +382,17 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     /**
-     * Colour of the strip under the keys (gesture handle): always the sheet's bottom colour, opaque.
-     * A see-through strip let the system's own black bar show through now and then (flicker).
+     * Colour the system paints over the strip under the keys (gesture handle area).
+     *
+     * The keyboard window reaches the bottom of the screen and the sheet itself is drawn under the
+     * gesture handle too (bottomInset), so the system paints nothing there: the strip is the same
+     * glass as the sheet and follows its transparency setting. What shows through at low opacity
+     * is whatever the app has behind it (many apps paint their own bar there, often black).
+     * Only if the sheet could not reach under the handle the strip gets the sheet's colour with
+     * the sheet's own transparency.
      */
-    private fun navColor(t: GlassTheme): Int = t.panelBottom or 0xFF000000.toInt()
+    private fun navColor(t: GlassTheme): Int =
+        if ((root?.bottomInset ?: 0) > 0) android.graphics.Color.TRANSPARENT else t.panelBottom
 
     private fun styleNavBar(t: GlassTheme) {
         val w = window?.window ?: return
@@ -1369,12 +1376,21 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                 // "nothing heard" is believed only if the recognizer really got sound: with our own
                 // recording, loud audio + no result means it ignored our audio (try the next one);
                 // recording by itself, a flat level means it was given silence
-                val gotSound = if (selfAudio) mic.peak < 1500 else maxRms > 1f
-                if ((error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && (heardSpeech || !quick) && gotSound) {
+                val believable = if (selfAudio) mic.peak < 1500 else maxRms > 1f
+                if ((error == android.speech.SpeechRecognizer.ERROR_NO_MATCH || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && (heardSpeech || !quick) && believable) {
                     // it worked, only nothing (understandable) was said
                     stopDictation()
                     Toast.makeText(this@GlassKeyboardService, if (hu) "Nem hallottam semmit – próbáld újra." else "Didn't catch that.", Toast.LENGTH_SHORT).show()
                     return
+                }
+                // the phone's offline recognizer has no Hungarian model yet: ask it to download one
+                // (used from the next dictation on); now go on with the next recognizer
+                if ((error == 12 || error == 13) && comp == onDevice && Build.VERSION.SDK_INT >= 33 && !modelAsked) {
+                    modelAsked = true
+                    try {
+                        rec.triggerModelDownload(lastDictationIntent ?: android.content.Intent())
+                    } catch (_: Exception) {
+                    }
                 }
                 // language not supported by a Google service: once more without asking for one
                 if ((error == 12 || error == 13) && dictationLang && comp != onDevice && !hu) {
@@ -1419,6 +1435,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
+        lastDictationIntent = android.content.Intent(intent)
         var source: android.os.ParcelFileDescriptor? = null
         if (selfAudio && Build.VERSION.SDK_INT >= 33) {
             source = mic.start()
@@ -1457,6 +1474,16 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                 if (mic.isRunning && mic.peak < 40) {
                     // even the keyboard's own recording is silent: the microphone is blocked
                     dictationErrors += if (hu) "a mikrofon csak csendet ad" else "microphone gives only silence"
+                } else if (mic.peak > 4000) {
+                    // the user is clearly speaking into our recording, but the recognizer noticed
+                    // no speech: it does not take audio from us; next one
+                    dictationErrors += "${recName(comp)}: " + (if (hu) "nem fogadja a hangot" else "ignores the audio")
+                    mic.stop()
+                    try {
+                        rec.cancel()
+                    } catch (_: Exception) {
+                    }
+                    nextRecognizer(sameAgain = false)
                 }
                 return@postDelayed
             }
@@ -1471,6 +1498,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         }, 2600)
     }
 
+    private var modelAsked = false
+    private var lastDictationIntent: android.content.Intent? = null
     private var dictationRetry = 0
     private var recognizerComp: android.content.ComponentName? = null
     /** the current recognizer reached "ready for speech" at least once */
