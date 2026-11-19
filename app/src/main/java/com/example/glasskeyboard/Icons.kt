@@ -127,14 +127,18 @@ object Icons {
         c.drawLine(cx - s * 0.18f, cy + s * 0.18f, cx + s * 0.1f, cy + s * 0.18f, stroke)
     }
 
+    /** settings: three slider lines with knobs at different places (iOS-like "tune" glyph) */
     fun gear(c: Canvas, cx: Float, cy: Float, s: Float, stroke: Paint) {
-        c.drawCircle(cx, cy, s * 0.15f, stroke)
-        c.drawCircle(cx, cy, s * 0.31f, stroke)
-        for (i in 0 until 8) {
-            val a = Math.PI * i / 4
-            val ca = Math.cos(a).toFloat()
-            val sa = Math.sin(a).toFloat()
-            c.drawLine(cx + ca * s * 0.31f, cy + sa * s * 0.31f, cx + ca * s * 0.46f, cy + sa * s * 0.46f, stroke)
+        val half = s * 0.42f
+        val knob = s * 0.095f
+        val ys = floatArrayOf(cy - s * 0.27f, cy, cy + s * 0.27f)
+        val ks = floatArrayOf(cx + s * 0.16f, cx - s * 0.18f, cx + s * 0.06f)
+        for (i in 0..2) {
+            val y = ys[i]
+            val k = ks[i]
+            c.drawLine(cx - half, y, k - knob - s * 0.05f, y, stroke)
+            c.drawLine(k + knob + s * 0.05f, y, cx + half, y, stroke)
+            c.drawCircle(k, y, knob, stroke)
         }
     }
 

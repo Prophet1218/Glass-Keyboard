@@ -108,8 +108,11 @@ class SettingsActivity : Activity() {
             (it.layoutParams as? LinearLayout.LayoutParams)?.bottomMargin = (14 * dp).toInt()
         })
 
-        // ---- setup
-        val setup = card(T("Beállítás"))
+        // ---- 1. setup (open by default until the keyboard is set up)
+        val imm0 = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        val ready = imm0.enabledInputMethodList.any { it.packageName == packageName } &&
+            (Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD) ?: "").startsWith("$packageName/")
+        val setup = section("setup", T("Bekapcsolás és kipróbálás"), T("A billentyűzet bekapcsolása a rendszerben, kiválasztása és egy próbamező"), !ready)
         status1 = text("", 15f, textColor)
         status2 = text("", 15f, textColor)
         setup.addView(status1)
@@ -130,60 +133,68 @@ class SettingsActivity : Activity() {
         test.minLines = 2
         setup.addView(test, lp(top = 10))
 
-        // ---- languages
-        val langs = card(T("Nyelvek"))
+        // ---- 2. languages
+        val langs = section("langs", T("Nyelvek"), T("Az alkalmazás nyelve és a billentyűzet nyelvei"))
         langs.addView(choiceRowThen(T("Az alkalmazás nyelve"), arrayOf(T("A telefon nyelve"), "Magyar", "English"), Prefs.K_UI_LANG, 0) {
             Ui.load(this)
             recreate()
         })
-        langs.addView(switchRow(T("Magyar"), T("QWERTZ kiosztás, magyar szótár és javítás"), Prefs.K_HU, true) { on ->
+        langs.addView(switchRow(T("Magyar billentyűzet"), T("QWERTZ kiosztás, magyar szótár és javítás"), Prefs.K_HU, true) { on ->
             if (!on && !prefs.englishEnabled) {
                 prefs.englishEnabled = true
                 recreate()
             }
         })
-        langs.addView(switchRow("English", "QWERTY layout, English dictionary", Prefs.K_EN, true) { on ->
+        langs.addView(switchRow(T("Angol billentyűzet"), T("QWERTY kiosztás, angol szótár és javítás"), Prefs.K_EN, true) { on ->
             if (!on && !prefs.hungarianEnabled) {
                 prefs.hungarianEnabled = true
                 recreate()
             }
         })
-        langs.addView(hint(T("Váltás: az emoji gomb hosszú nyomásával.")))
+        langs.addView(hint(T("Nyelvváltás gépelés közben: tartsd lenyomva az emoji gombot.")))
 
-        // ---- typing
-        val typing = card(T("Gépelés"))
-        typing.addView(switchRow(T("Automatikus javítás"), T("Elgépelések és hiányzó ékezetek javítása szóköznél (jo → jó, koszonom → köszönöm). Visszatörléssel visszavonható."), Prefs.K_AUTOCORRECT, true))
-        typing.addView(switchRow(T("Eszköztár a javaslatsávban"), T("Amíg nem gépelsz: emoji, vágólap, nyelv, billentyűzet elrejtése, beállítások. Gépeléskor szójavaslatok; a › gombbal előhozható."), Prefs.K_TOOLBAR, true))
-        typing.addView(switchRow(T("Javaslatsáv"), T("Szójavaslatok és következő szó a billentyűk fölött"), Prefs.K_SUGGESTIONS, true))
-        typing.addView(switchRow(T("Szavak tanulása"), T("Megjegyzi a saját szavaidat és szófordulataidat"), Prefs.K_LEARN, true))
-        typing.addView(switchRow(T("Számsor"), T("Külön számsor (1–0) a betűk fölött"), Prefs.K_NUMBER_ROW, false))
-        typing.addView(switchRow(T("Pont a szóköz mellett"), T("„.” gomb a szóköz jobb oldalán (hosszan nyomva: , ? ! … : ;)"), Prefs.K_PERIOD_KEY, false))
-        typing.addView(switchRow(T("Ékezetsor"), T("Külön sor az á é í ó ö ő ú ü ű betűknek (magyarnál)"), Prefs.K_ACCENT_ROW, false))
+        // ---- 3. typing & correction
+        val typing = section("typing", T("Gépelés és javítás"), T("Automatikus javítás, javaslatok, nagybetű, írásjelek"))
+        typing.addView(switchRow(T("Automatikus javítás"), T("Szóköznél kijavítja az elgépelést és a hiányzó ékezetet (jo → jó, koszonom → köszönöm). Visszatörléssel visszavonható."), Prefs.K_AUTOCORRECT, true))
+        typing.addView(switchRow(T("Szójavaslatok"), T("Három javaslat a billentyűk fölött: a beírt szó, a javítás és egy másik lehetőség, utána a következő szó"), Prefs.K_SUGGESTIONS, true))
+        typing.addView(switchRow(T("Emoji javaslatok"), T("Illő emoji a javaslatok között (pizza → 🍕, szeretlek → ❤️)"), Prefs.K_EMOJI_SUGG, true))
+        typing.addView(switchRow(T("Szavak tanulása"), T("Megjegyzi a saját szavaidat és szópárjaidat, így jobban javít és jósol"), Prefs.K_LEARN, true))
         typing.addView(switchRow(T("Automatikus nagybetű"), T("Mondat elején nagybetűvel kezd"), Prefs.K_AUTOCAPS, true))
-        typing.addView(switchRow(T("Dupla szóköz = pont"), T("Két szóköz gyorsan egymás után: „. ”"), Prefs.K_DOUBLE_SPACE, true))
+        typing.addView(switchRow(T("Dupla szóköz = pont"), T("Két gyors szóköz pontot és szóközt tesz"), Prefs.K_DOUBLE_SPACE, true))
         typing.addView(switchRow(T("Okos idézőjelek"), T("\" helyett „ és ” (angolnál “ ”)"), Prefs.K_SMART_QUOTES, true))
-        typing.addView(switchRow(T("Emoji javaslatok"), T("Pl. pizza → 🍕, szeretlek → ❤️"), Prefs.K_EMOJI_SUGG, true))
-        typing.addView(switchRow(T("Szóköz mint kurzor"), T("Szóközt hosszan nyomva vagy elhúzva mozgatható a kurzor"), Prefs.K_SPACE_CURSOR, true))
+        typing.addView(switchRow(T("Szóköz mint kurzor"), T("A szóközt hosszan nyomva vagy elhúzva a kurzor mozgatható"), Prefs.K_SPACE_CURSOR, true))
+        typing.addView(actionRow(T("Magyar tanult szavak"), T("Megtekintés, törlés")) { showWords("hu") })
+        typing.addView(actionRow(T("Angol tanult szavak"), T("Megtekintés, törlés")) { showWords("en") })
 
-        // ---- glass (same set as in Glass Browser)
-        val glass = card(T("Üveghatás"))
+        // ---- 4. keyboard layout
+        val layoutSec = section("layout", T("Billentyűzet elrendezése"), T("Számsor, pont gomb, ékezetsor, eszköztár, gombméret"))
+        layoutSec.addView(switchRow(T("Eszköztár"), T("Amíg nem gépelsz, a javaslatsáv helyén gombok: billentyűzet elrejtése, emoji, GIF, vágólap, beállítások. Gépelés közben a › gombbal hozható elő."), Prefs.K_TOOLBAR, true))
+        layoutSec.addView(switchRow(T("Számsor"), T("Külön sor a számoknak (1–0) a betűk fölött"), Prefs.K_NUMBER_ROW, false))
+        layoutSec.addView(switchRow(T("Pont gomb a szóköz mellett"), T("„.” gomb a szóköz jobb oldalán; hosszan nyomva: , ? ! … : ;"), Prefs.K_PERIOD_KEY, false))
+        layoutSec.addView(switchRow(T("Ékezetsor"), T("Külön sor az á é í ó ö ő ú ü ű betűknek (csak magyarnál)"), Prefs.K_ACCENT_ROW, false))
+        layoutSec.addView(seekRow(T("Gombok magassága"), Prefs.K_KEY_HEIGHT, 80, 130, 100, "%"))
+
+        // ---- 5. background & colours
+        val colors = section("colors", T("Háttér és színek"), T("Háttér, világos/sötét, átlátszóság, színezés"))
+        colors.addView(backgroundRow())
+        colors.addView(choiceRow(T("Világos vagy sötét"), arrayOf(T("Rendszer szerint (világos / sötét)"), T("Világos"), T("Sötét"), T("Átlátszó")), Prefs.K_THEME, 0))
+        colors.addView(seekRow(T("Háttér átlátszatlansága (üveg háttérnél)"), Prefs.K_PANEL_OPACITY, 0, 100, 100, "%"))
+        colors.addView(seekRow(T("Gombok átlátszatlansága"), Prefs.K_KEY_OPACITY, 15, 100, 100, "%"))
+        colors.addView(choiceRow(T("A billentyűzet alja (navigációs sáv)"), arrayOf(T("Üveg – teljesen átlátszó"), T("Üveg, az alja fokozatosan tömör (eltakarja az alkalmazás sötét sávját)"), T("A billentyűzet színe – tömör")), Prefs.K_NAV_STYLE, 0))
+        colors.addView(hueRow(T("Üveg színe"), Prefs.K_HUE, 210))
+        colors.addView(seekRow(T("Szín erőssége (0 = színtelen üveg)"), Prefs.K_HUE_STRENGTH, 0, 70, 0, ""))
+        colors.addView(seekRow(T("Üveg sötétítése"), Prefs.K_GLASS_DARK, 0, 80, 0, ""))
+        colors.addView(seekRow(T("Gombok sötétítése"), Prefs.K_KEY_DARK, 0, 80, 0, ""))
+
+        // ---- 6. glass effect
+        val glass = section("glass", T("Üveghatás"), T("Az üveg anyaga, elmosása, fénytörése és pereme"))
         glass.addView(choiceRow(T("Üveg típusa"), arrayOf(T("Folyékony üveg (fénytörés)"), T("Matt üveg (elmosás, fénytörés nélkül)"), T("Kikapcsolva (tömör felületek, üveg nélkül)")), Prefs.K_GLASS, 0))
-        glass.addView(choiceRow(T("Üveg árnyalata"), arrayOf(T("Rendszer szerint (világos / sötét)"), T("Világos"), T("Sötét"), T("Átlátszó")), Prefs.K_THEME, 0))
-        glass.addView(choiceRow(T("Eszköztár gombjainak háttere"), arrayOf(T("Liquid glass – átlátszó, fénytörő"), T("Frosted glass – matt, elmosott"), T("Tömör")), Prefs.K_TOOL_GLASS, 0))
-        glass.addView(choiceRow(T("Betűbuborék anyaga (gépeléskor)"), arrayOf(T("Liquid glass – átlátszó, fénytörő"), T("Frosted glass – matt, elmosott"), T("Tömör")), Prefs.K_PREVIEW_GLASS, 2))
-        glass.addView(choiceRow(T("Hosszú nyomás menü (ékezetválasztó) anyaga"), arrayOf(T("Liquid glass – átlátszó, fénytörő"), T("Frosted glass – matt, elmosott"), T("Tömör")), Prefs.K_POPUP_GLASS, 0))
-        glass.addView(seekRow(T("Üveg elmosása (ékezetválasztó, betűbuborék, eszköztár)"), Prefs.K_POPUP_BLUR, 0, 100, 45, ""))
-        glass.addView(choiceRow(T("Kijelölő kapszula (javaslat és ékezetválasztó)"), arrayOf(T("Liquid glass (fénytörés)"), T("Frosted glass (matt, elmosott)")), Prefs.K_LENS_STYLE, 0))
-        glass.addView(hueRow(T("Üveg színe"), Prefs.K_HUE, 210))
-        glass.addView(seekRow(T("Szín erőssége (0 = színtelen üveg)"), Prefs.K_HUE_STRENGTH, 0, 70, 0, ""))
         glass.addView(seekRow(T("Elmosás"), Prefs.K_BLUR, 0, 24, 2, ""))
         glass.addView(seekRow(T("Fénytörés magassága"), Prefs.K_REFR_H, 12, 50, 30, ""))
-        glass.addView(seekRow(T("Fénytörés eltolása"), Prefs.K_REFR_OFF, 20, 120, 50, ""))
-        glass.addView(seekRow(T("Színszóródás"), Prefs.K_DISP, 0, 100, 0, ""))
-        glass.addView(seekRow(T("Üveg sötétítése"), Prefs.K_GLASS_DARK, 0, 80, 0, ""))
-        glass.addView(seekRow(T("Gombok sötétítése"), Prefs.K_KEY_DARK, 0, 80, 0, ""))
-        glass.addView(switchRow(T("Körív az üvegen"), T("Vékony fényív az üvegfelületek (gombok, lap, kijelölő) szélén."), Prefs.K_RIM, true))
-        glass.addView(switchRow(T("Domború (3D) üveg"), T("Az üvegfelületek domborúnak, vastagnak látszanak: fénycsillanás a peremen, erősebb fénytörés a széleken."), Prefs.K_CONVEX, false))
+        glass.addView(seekRow(T("Fénytörés erőssége"), Prefs.K_REFR_OFF, 20, 120, 50, ""))
+        glass.addView(seekRow(T("Színszóródás (szivárványos perem)"), Prefs.K_DISP, 0, 100, 0, ""))
+        glass.addView(switchRow(T("Fényív a pereme mentén"), T("Vékony fényív az üvegfelületek (gombok, lap, kijelölő) szélén"), Prefs.K_RIM, true))
+        glass.addView(switchRow(T("Domború (3D) üveg"), T("Vastag, domború hatás: csillanás a peremen, erősebb fénytörés a széleken"), Prefs.K_CONVEX, false))
         glass.addView(actionRow(T("Alapértelmezett üvegbeállítások visszaállítása"), T("Az üveg típusa, árnyalata, színe, átlátszósága, az elmosás, a fénytörés és a színszóródás visszaáll az eredeti értékre.")) {
             dialog().setMessage(T("Visszaállítod az üvegbeállításokat?"))
                 .setPositiveButton(T("Visszaállítás")) { _, _ ->
@@ -193,28 +204,34 @@ class SettingsActivity : Activity() {
                 .setNegativeButton(T("Mégse"), null).frosted()
         })
 
-        // ---- look & feel
-        val look = card(T("Megjelenés és visszajelzés"))
-        look.addView(backgroundRow())
-        look.addView(seekRow(T("Háttér átlátszatlansága"), Prefs.K_PANEL_OPACITY, 0, 100, 100, "%"))
-        look.addView(choiceRow(T("Navigációs sáv (a billentyűzet alatt)"), arrayOf(T("Üveg – teljesen átlátszó"), T("Üveg, az alja fokozatosan tömör (eltakarja az alkalmazás sötét sávját)"), T("A billentyűzet színe – tömör")), Prefs.K_NAV_STYLE, 0))
-        look.addView(seekRow(T("Gombok átlátszatlansága"), Prefs.K_KEY_OPACITY, 15, 100, 100, "%"))
-        look.addView(seekRow(T("Billentyűmagasság"), Prefs.K_KEY_HEIGHT, 80, 130, 100, "%"))
-        look.addView(switchRow(T("Animációk"), T("Felugró buborékok, rugalmas ékezetválasztó, áttűnések"), Prefs.K_ANIM, true))
-        look.addView(choiceRow(T("Javaslatok animációja"), arrayOf(T("Áttűnés"), T("Felúszás"), T("Nagyítás"), T("Gördülés"), T("Nincs")), Prefs.K_SUGG_ANIM, 0))
-        look.addView(choiceRow(T("Gombérintés effekt"), arrayOf(T("Kiemelkedés"), T("Benyomódás"), T("Fénylés"), T("Nincs")), Prefs.K_PRESS_ANIM, 0))
-        look.addView(choiceRow(T("Betűbuborék gépeléskor"), arrayOf(T("Rugós felugrás"), T("Felúszás"), T("Áttűnés"), T("Azonnali")), Prefs.K_PREVIEW_ANIM, 0))
-        look.addView(choiceRow(T("Hosszú nyomás (ékezetválasztó)"), arrayOf(T("Rugós kinyílás"), T("Szétnyílás oldalra"), T("Áttűnés")), Prefs.K_POPUP_ANIM, 0))
-        look.addView(switchRow(T("Rezgés javaslatra koppintáskor"), T("Egy rövid, határozott haptikus jelzés"), Prefs.K_CHAOS, true))
-        look.addView(seekRow(T("Animációk sebessége (nagyobb = gyorsabb)"), Prefs.K_ANIM_SPEED, 50, 200, 100, "%"))
-        look.addView(choiceRow(T("Megnyílási animáció"), arrayOf(T("Felcsúszás, fokozatosan lassulva"), T("Rugós felcsúszás"), T("Áttűnés és nagyítás"), T("Egyenletes felcsúszás"), T("Nincs")), Prefs.K_OPEN_ANIM, 0))
-        look.addView(seekRow(T("Megnyílás időtartama (kisebb = gyorsabb)"), Prefs.K_OPEN_MS, 100, 900, 320, " ms"))
-        look.addView(switchRow(T("Billentyű-előnézet"), T("Felnagyított betű buborék gépeléskor"), Prefs.K_PREVIEW, true))
-        look.addView(choiceRow(T("Rezgés"), arrayOf(T("Ki"), T("Enyhe"), T("Erős")), Prefs.K_HAPTICS, 1))
-        look.addView(switchRow(T("Hang"), T("Kattanó hang gépeléskor"), Prefs.K_SOUND, false))
+        // ---- 7. pop-ups
+        val pops = section("popups", T("Buborékok és kijelölés"), T("Betűbuborék, ékezetválasztó, kijelölő kapszula, eszköztár gombjai"))
+        pops.addView(switchRow(T("Betűbuborék gépeléskor"), T("A lenyomott betű felnagyítva megjelenik az ujjad fölött"), Prefs.K_PREVIEW, true))
+        pops.addView(choiceRow(T("Betűbuborék anyaga"), arrayOf(T("Liquid glass – átlátszó, fénytörő"), T("Frosted glass – matt, elmosott"), T("Tömör")), Prefs.K_PREVIEW_GLASS, 2))
+        pops.addView(choiceRow(T("Ékezetválasztó anyaga (hosszú nyomás)"), arrayOf(T("Liquid glass – átlátszó, fénytörő"), T("Frosted glass – matt, elmosott"), T("Tömör")), Prefs.K_POPUP_GLASS, 0))
+        pops.addView(choiceRow(T("Kijelölő kapszula"), arrayOf(T("Liquid glass (fénytörés)"), T("Frosted glass (matt, elmosott)")), Prefs.K_LENS_STYLE, 0))
+        pops.addView(choiceRow(T("Eszköztár gombjainak háttere"), arrayOf(T("Liquid glass – átlátszó, fénytörő"), T("Frosted glass – matt, elmosott"), T("Tömör")), Prefs.K_TOOL_GLASS, 0))
+        pops.addView(seekRow(T("Buborékok üvegének elmosása"), Prefs.K_POPUP_BLUR, 0, 100, 45, ""))
 
-        // ---- GIF
-        val gif = card("GIF")
+        // ---- 8. animations
+        val anim = section("anim", T("Animációk"), T("Megnyílás, gombnyomás, javaslatok, buborékok, sebesség"))
+        anim.addView(switchRow(T("Animációk"), T("Felugró buborékok, rugalmas ékezetválasztó, áttűnések"), Prefs.K_ANIM, true))
+        anim.addView(seekRow(T("Animációk sebessége (nagyobb = gyorsabb)"), Prefs.K_ANIM_SPEED, 50, 200, 100, "%"))
+        anim.addView(choiceRow(T("Megnyílás"), arrayOf(T("Felcsúszás, fokozatosan lassulva"), T("Rugós felcsúszás"), T("Áttűnés és nagyítás"), T("Egyenletes felcsúszás"), T("Nincs")), Prefs.K_OPEN_ANIM, 0))
+        anim.addView(seekRow(T("Megnyílás időtartama (kisebb = gyorsabb)"), Prefs.K_OPEN_MS, 100, 900, 320, " ms"))
+        anim.addView(choiceRow(T("Gombnyomás"), arrayOf(T("Kiemelkedés"), T("Benyomódás"), T("Fénylés"), T("Nincs")), Prefs.K_PRESS_ANIM, 0))
+        anim.addView(choiceRow(T("Javaslatok váltása"), arrayOf(T("Áttűnés"), T("Felúszás"), T("Nagyítás"), T("Gördülés"), T("Nincs")), Prefs.K_SUGG_ANIM, 0))
+        anim.addView(choiceRow(T("Betűbuborék megjelenése"), arrayOf(T("Rugós felugrás"), T("Felúszás"), T("Áttűnés"), T("Azonnali")), Prefs.K_PREVIEW_ANIM, 0))
+        anim.addView(choiceRow(T("Ékezetválasztó kinyílása"), arrayOf(T("Rugós kinyílás"), T("Szétnyílás oldalra"), T("Áttűnés")), Prefs.K_POPUP_ANIM, 0))
+
+        // ---- 9. feedback
+        val feel = section("feel", T("Rezgés és hang"), T("Visszajelzés gombnyomásra és javaslatra"))
+        feel.addView(choiceRow(T("Rezgés gombnyomásra"), arrayOf(T("Ki"), T("Enyhe"), T("Erős")), Prefs.K_HAPTICS, 1))
+        feel.addView(switchRow(T("Rezgés javaslatra koppintáskor"), T("Egy rövid, határozott haptikus jelzés"), Prefs.K_CHAOS, true))
+        feel.addView(switchRow(T("Hang"), T("Kattanó hang gépeléskor"), Prefs.K_SOUND, false))
+
+        // ---- 10. GIF
+        val gif = section("gif", "GIF", T("GIF-kereső kulcsa (KLIPY)"))
         gif.addView(hint(T("A Tenor GIF szolgáltatást a Google 2026. június 30-án lezárta a külső alkalmazások elől, ezért a billentyűzet a KLIPY-t használja (ugyanolyan GIF-kereső). Ehhez egy ingyenes API kulcs kell: regisztrálj a partner.klipy.com oldalon, hozz létre egy platformot, és másold ide a kulcsot.")))
         val keyField = EditText(this)
         keyField.hint = T("KLIPY API kulcs")
@@ -231,13 +248,8 @@ class SettingsActivity : Activity() {
             android.widget.Toast.makeText(this, T("Elmentve"), android.widget.Toast.LENGTH_SHORT).show()
         })
 
-        // ---- learned words
-        val words = card(T("Tanult szavak"))
-        words.addView(actionRow(T("Magyar tanult szavak"), T("Megtekintés, törlés")) { showWords("hu") })
-        words.addView(actionRow("English learned words", "View, delete") { showWords("en") })
-
-        // ---- diagnostics
-        val diag = card(T("Hibakeresés"))
+        // ---- 11. diagnostics
+        val diag = section("diag", T("Hibakeresés"), T("Napló arról, mit csinált a billentyűzet"))
         diag.addView(hint(T("Ha valami nem jól működik, itt látszik, mi történt. Készíts róla képernyőképet, vagy másold ki.")))
         val log = text(DiagLog.text(this).ifEmpty { T("(üres)") }, 11f, softColor)
         log.typeface = Typeface.MONOSPACE
@@ -254,7 +266,48 @@ class SettingsActivity : Activity() {
             log.text = T("(üres)")
         })
 
-        content.addView(hint(T("A szótárak a wordfreq és az OpenSubtitles (FrequencyWords) adataiból készültek (CC BY-SA 4.0). Minden a telefonon marad; a billentyűzet nem használ internetet.")))
+        content.addView(hint(T("A szótárak a wordfreq és az OpenSubtitles (FrequencyWords) adataiból készültek (CC BY-SA 4.0). A gépelés a telefonon marad; internetet csak a GIF-keresés használ.")), lp(top = 16))
+    }
+
+    // ------------------------------------------------------------------ collapsible sections
+
+    /**
+     * A category: a card with its title, a one-line description and a chevron; tapping the header
+     * opens or closes it (remembered). Returns the body to put the rows in.
+     */
+    private fun section(id: String, title: String, subtitle: String, openByDefault: Boolean = false): LinearLayout {
+        val c = LinearLayout(this)
+        c.orientation = LinearLayout.VERTICAL
+        c.background = rounded(if (dark) 0x1FFFFFFF else 0xB3FFFFFF.toInt(), 22f, if (dark) 0x26FFFFFF else 0xE6FFFFFF.toInt())
+        c.setPadding((16 * dp).toInt(), (4 * dp).toInt(), (16 * dp).toInt(), (4 * dp).toInt())
+        c.layoutTransition = android.animation.LayoutTransition().apply { enableTransitionType(android.animation.LayoutTransition.CHANGING) }
+        content.addView(c, lp(top = 12))
+        val head = row()
+        head.setPadding(0, (12 * dp).toInt(), 0, (12 * dp).toInt())
+        val l = LinearLayout(this)
+        l.orientation = LinearLayout.VERTICAL
+        l.addView(text(title, 18f, textColor, bold = true))
+        l.addView(text(subtitle, 13f, softColor))
+        head.addView(l, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val chev = text("›", 26f, softColor)
+        head.addView(chev)
+        c.addView(head)
+        val body = LinearLayout(this)
+        body.orientation = LinearLayout.VERTICAL
+        body.setPadding(0, 0, 0, (8 * dp).toInt())
+        c.addView(body, lp())
+        val key = "sec_$id"
+        fun show(open: Boolean, animate: Boolean) {
+            body.visibility = if (open) View.VISIBLE else View.GONE
+            if (animate) chev.animate().rotation(if (open) 90f else 0f).setDuration(200).start() else chev.rotation = if (open) 90f else 0f
+        }
+        show(prefs.sp.getBoolean(key, openByDefault), false)
+        head.setOnClickListener {
+            val open = body.visibility != View.VISIBLE
+            prefs.sp.edit().putBoolean(key, open).apply()
+            show(open, true)
+        }
+        return body
     }
 
     private fun refreshStatus() {
@@ -469,49 +522,95 @@ class SettingsActivity : Activity() {
         private val clip = android.graphics.Path()
         private val rr = android.graphics.RectF()
 
+        private val fillP = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val txt = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textAlign = android.graphics.Paint.Align.CENTER }
+
+        private fun key(c: android.graphics.Canvas, l: Float, t: Float, r: Float, b: Float, color: Int, th: GlassTheme, label: String? = null) {
+            rr.set(l, t, r, b)
+            val rad = (b - t) * 0.2f
+            // soft contact shadow, the key, and a thin light top edge
+            fillP.color = if (th.dark) 0x40000000 else 0x26000000
+            rr.offset(0f, (b - t) * 0.05f)
+            c.drawRoundRect(rr, rad, rad, fillP)
+            rr.offset(0f, -(b - t) * 0.05f)
+            fillP.color = color
+            c.drawRoundRect(rr, rad, rad, fillP)
+            if (label != null) {
+                txt.color = th.text
+                txt.textSize = (b - t) * 0.52f
+                c.drawText(label, rr.centerX(), rr.centerY() + txt.textSize * 0.36f, txt)
+            }
+        }
+
         override fun onDraw(c: android.graphics.Canvas) {
             val w = width.toFloat()
             val h = height.toFloat()
             val t = GlassTheme(context, prefs.theme, prefs.glassStyle, prefs.panelOpacity, prefs.keyOpacity, prefs.glass(), preset)
+            val corner = 12 * dp
             clip.reset()
             rr.set(0f, 0f, w, h)
-            clip.addRoundRect(rr, 12 * dp, 12 * dp, android.graphics.Path.Direction.CW)
+            clip.addRoundRect(rr, corner, corner, android.graphics.Path.Direction.CW)
             c.save()
             c.clipPath(clip)
-            // a colourful "app" behind, so the glass choice shows that it is see-through
-            wall.shader = android.graphics.LinearGradient(0f, 0f, w, h, intArrayOf(0xFFFF7A59.toInt(), 0xFFB04BFF.toInt(), 0xFF2F80FF.toInt()), null, android.graphics.Shader.TileMode.CLAMP)
+            if (!t.solidBg) {
+                // a colourful "app" behind: the glass shows that it is see-through
+                wall.shader = android.graphics.LinearGradient(0f, 0f, w, h, intArrayOf(0xFFFF7A59.toInt(), 0xFFB04BFF.toInt(), 0xFF2F80FF.toInt()), null, android.graphics.Shader.TileMode.CLAMP)
+                c.drawRect(rr, wall)
+                wall.shader = null
+                wall.color = 0x55FFFFFF
+                c.drawCircle(w * 0.22f, h * 0.3f, h * 0.26f, wall)
+                c.drawCircle(w * 0.8f, h * 0.85f, h * 0.2f, wall)
+            }
+            // the keyboard sheet over the whole picture
+            wall.shader = android.graphics.LinearGradient(0f, 0f, 0f, h, t.panelTop, t.panelBottom, android.graphics.Shader.TileMode.CLAMP)
             c.drawRect(rr, wall)
             wall.shader = null
-            wall.color = 0x66FFFFFF
-            c.drawCircle(w * 0.25f, h * 0.35f, h * 0.22f, wall)
-            val top = h * 0.12f
-            t.drawPanel(c, 0f, top, w, h)
-            // keys: 10 / 9 / 7+2 / bottom row
-            val pad = w * 0.025f
-            val rowH = (h - top - pad) / 4f
-            val kh = rowH * 0.72f
-            val rad = kh * 0.22f
-            val counts = intArrayOf(10, 9, 9)
-            for (row in 0 until 3) {
-                val n = counts[row]
-                val kw = (w - pad * 2) / 10f
-                val start = pad + (10 - n) * kw / 2f
-                val y = top + pad + row * rowH
-                for (k in 0 until n) {
-                    val special = row == 2 && (k == 0 || k == n - 1)
-                    rr.set(start + k * kw + kw * 0.1f, y, start + (k + 1) * kw - kw * 0.1f, y + kh)
-                    t.drawKey(c, rr, if (special) t.keySpecial else t.key, rad)
-                }
+            // rows like the real keyboard: 10 / 9 / shift 7 delete / 123 emoji space return
+            val side = w * 0.03f
+            val gap = w * 0.014f
+            val kw = (w - side * 2 - gap * 9) / 10f
+            val top = h * 0.07f
+            val rowGap = h * 0.045f
+            val kh = (h - top * 2 - rowGap * 3) / 4f
+            val r1 = "QWERTZUIOP"
+            for (i in 0 until 10) {
+                val x = side + i * (kw + gap)
+                key(c, x, top, x + kw, top + kh, t.key, t, r1[i].toString())
             }
-            val y = top + pad + 3 * rowH
-            val kw = (w - pad * 2) / 10f
-            rr.set(pad + kw * 0.1f, y, pad + kw * 2.4f, y + kh)
-            t.drawKey(c, rr, t.keySpecial, rad)
-            rr.set(pad + kw * 2.6f, y, pad + kw * 7.4f, y + kh)
-            t.drawKey(c, rr, t.key, rad)
-            rr.set(pad + kw * 7.6f, y, w - pad - kw * 0.1f, y + kh)
-            t.drawKey(c, rr, t.keySpecial, rad)
+            val r2 = "ASDFGHJKL"
+            val off2 = (kw + gap) / 2f
+            for (i in 0 until 9) {
+                val x = side + off2 + i * (kw + gap)
+                val y = top + kh + rowGap
+                key(c, x, y, x + kw, y + kh, t.key, t, r2[i].toString())
+            }
+            val y3 = top + 2 * (kh + rowGap)
+            val wide = kw * 1.45f
+            key(c, side, y3, side + wide, y3 + kh, t.keySpecial, t)
+            key(c, w - side - wide, y3, w - side, y3 + kh, t.keySpecial, t)
+            val r3 = "YXCVBNM"
+            val inner0 = side + wide + gap * 1.6f
+            val innerW = (w - side - wide - gap * 1.6f) - inner0
+            val kw3 = (innerW - gap * 6) / 7f
+            for (i in 0 until 7) {
+                val x = inner0 + i * (kw3 + gap)
+                key(c, x, y3, x + kw3, y3 + kh, t.key, t, r3[i].toString())
+            }
+            val y4 = top + 3 * (kh + rowGap)
+            val unit = (w - side * 2 - gap * 3) / 10f
+            var x = side
+            key(c, x, y4, x + unit * 1.25f, y4 + kh, t.keySpecial, t); x += unit * 1.25f + gap
+            key(c, x, y4, x + unit * 1.25f, y4 + kh, t.keySpecial, t); x += unit * 1.25f + gap
+            key(c, x, y4, x + unit * 5.5f, y4 + kh, t.key, t); x += unit * 5.5f + gap
+            key(c, x, y4, w - side, y4 + kh, t.keySpecial, t)
             c.restore()
+            // thin outline so light pictures stand out on light dialogs
+            fillP.style = android.graphics.Paint.Style.STROKE
+            fillP.strokeWidth = 1 * dp
+            fillP.color = if (dark) 0x33FFFFFF else 0x22000000
+            rr.set(0.5f * dp, 0.5f * dp, w - 0.5f * dp, h - 0.5f * dp)
+            c.drawRoundRect(rr, corner, corner, fillP)
+            fillP.style = android.graphics.Paint.Style.FILL
         }
     }
 

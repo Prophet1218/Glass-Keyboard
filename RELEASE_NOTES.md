@@ -1,5 +1,5 @@
-## Glass Keyboard 0.0.19
+## Glass Keyboard 0.0.20
 
-- **Dictation removed** together with the microphone and globe icons below the keyboard (and the microphone permission). The language is switched by a long press on the emoji key
-- **Backgrounds:** new setting with previews – the glass sheet or 11 solid colours (black, graphite, dark grey, slate, light grey, white, midnight blue, forest green, burgundy, plum, sand). With a solid background the area under the gesture handle is the same colour too
-- **Top light arc** of the keyboard fades out at the corners instead of ending in a hard cut
+- **Settings reorganised** into collapsible categories with a short description each: Setup and test, Languages, Typing and correction, Keyboard layout, Background and colors, Glass effect, Pop-ups and selection, Animations, Vibration and sound, GIF, Diagnostics. Open/closed state is remembered; option names and descriptions were rewritten to say clearly what they do
+- **Background previews redrawn:** the keyboard fills the whole picture (no coloured band at the top), real key rows with letters, light shadows; the colourful backdrop only shows through the glass option
+- **New settings icon** in the toolbar (slider glyph instead of the gear)
