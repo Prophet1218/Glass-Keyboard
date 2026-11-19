@@ -697,8 +697,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         }
         if (label.isEmpty()) enterAction = EditorInfo.IME_ACTION_NONE
         kb.enterLabel = label
-        kb.enterAccent = enterAction == EditorInfo.IME_ACTION_GO || enterAction == EditorInfo.IME_ACTION_SEARCH ||
-                enterAction == EditorInfo.IME_ACTION_SEND || enterAction == EditorInfo.IME_ACTION_DONE
+        // the return key keeps its normal look for every action (no blue highlight), only the label changes
+        kb.enterAccent = false
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {

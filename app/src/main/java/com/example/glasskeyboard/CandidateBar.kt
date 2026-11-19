@@ -184,16 +184,30 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         val w = width / TOOLS.toFloat()
         val cy = toolCy()
         for (i in 0 until TOOLS) {
-            val col = if (i == activeTool) t.accent else t.toolIcon
+            val active = i == activeTool
+            // the open panel's icon: bright white with a soft white glow instead of the blue accent
+            val col = if (active) (if (t.dark) Color.WHITE else 0xFF1C1C22.toInt()) else t.toolIcon
             t.icon.color = col
             t.iconFill.color = col
             t.icon.alpha = (Color.alpha(col) * alpha).toInt()
             t.iconFill.alpha = t.icon.alpha
+            if (active) {
+                val glow = if (t.dark) 0xE6FFFFFF.toInt() else 0xFFFFFFFF.toInt()
+                val g = (Color.alpha(glow) * alpha).toInt()
+                t.icon.setShadowLayer(7f * dp, 0f, 0f, (glow and 0x00FFFFFF) or (g shl 24))
+                t.iconFill.setShadowLayer(7f * dp, 0f, 0f, (glow and 0x00FFFFFF) or (g shl 24))
+            }
             val sc = toolScale(i)
             val cx = w * i + w / 2
             c.save()
             c.scale(sc, sc, cx, cy)
             toolIcon(c, i, cx, cy, 22 * dp, t)
+            if (active) {
+                // twice for a stronger halo
+                toolIcon(c, i, cx, cy, 22 * dp, t)
+                t.icon.clearShadowLayer()
+                t.iconFill.clearShadowLayer()
+            }
             c.restore()
         }
         t.icon.alpha = 255
