@@ -2,14 +2,27 @@ package com.example.glasskeyboard
 
 /** UI language: the phone's language if supported (Hungarian), otherwise English. */
 object Ui {
-    val hu: Boolean get() = java.util.Locale.getDefault().language == "hu"
+    /** 0 = follow the phone, 1 = Hungarian, 2 = English (setting in the app) */
+    @Volatile var mode = 0
+    val hu: Boolean get() = when (mode) {
+        1 -> true
+        2 -> false
+        else -> java.util.Locale.getDefault().language == "hu"
+    }
+
+    fun load(ctx: android.content.Context) {
+        mode = Prefs(ctx).sp.getInt(Prefs.K_UI_LANG, 0)
+    }
 
     /** English text for a Hungarian UI string (the Hungarian text is the key). */
     fun t(huText: String): String = if (hu) huText else EN[huText] ?: huText
 
     private val EN = hashMapOf(
+        "Az alkalmazás nyelve" to "App language",
+        "A telefon nyelve" to "Phone language",
         "Navigációs sáv (a billentyűzet alatt)" to "Navigation bar area (below the keyboard)",
-        "Üveg – átlátszó, mint a billentyűzet háttere" to "Glass – see-through, like the keyboard background",
+        "Üveg – teljesen átlátszó" to "Glass – fully see-through",
+        "Üveg, az alja fokozatosan tömör (eltakarja az alkalmazás sötét sávját)" to "Glass fading to solid at the bottom (hides the app's dark bar)",
         "A billentyűzet színe – tömör" to "Keyboard color – solid",
         "Hibakeresés" to "Diagnostics",
         "Ha a diktálás vagy a navigációs sáv nem jól működik, itt látszik, mi történt. Készíts róla képernyőképet, vagy másold ki." to "If dictation or the navigation bar area does not work well, this shows what happened. Take a screenshot or copy it.",

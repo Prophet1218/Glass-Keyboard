@@ -38,6 +38,14 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <activity
+            android:name=".MicBoostActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="false"
+            android:taskAffinity="com.example.glasskeyboard.micboost"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <activity
             android:name=".VoiceActivity"
             android:excludeFromRecents="true"
             android:exported="false"

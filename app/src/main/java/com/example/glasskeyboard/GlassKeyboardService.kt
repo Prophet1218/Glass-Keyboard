@@ -102,8 +102,35 @@ class KeyboardRoot(context: Context, val panel: View, val overlay: View) : ViewG
         overlay.layout(0, 0, r - l, h)
     }
 
+    /** 0 glass, 1 glass fading to solid at the bottom edge, 2 solid (under the gesture handle) */
+    var navFill = 1
+        set(v) {
+            field = v
+            invalidate()
+        }
+    private val navPaint = android.graphics.Paint()
+
     override fun onDraw(canvas: Canvas) {
-        theme?.drawPanel(canvas, 0f, panel.top.toFloat(), width.toFloat(), height.toFloat())
+        val t = theme ?: return
+        val nav = bottomInset.toFloat()
+        if (nav > 0f && navFill > 0) {
+            // Under the gesture handle most apps paint their own (often black) bar, which shows
+            // through the see-through sheet as a dark band. An opaque backing in the sheet's own
+            // colour hides it: either faded in over a short distance or solid.
+            val col = t.panelBottom or 0xFF000000.toInt()
+            val h = height.toFloat()
+            val top = h - nav
+            if (navFill == 1) {
+                val fade = 18f * resources.displayMetrics.density
+                navPaint.shader = android.graphics.LinearGradient(0f, top - fade, 0f, top + nav * 0.35f, col and 0x00FFFFFF, col, android.graphics.Shader.TileMode.CLAMP)
+                canvas.drawRect(0f, top - fade, width.toFloat(), h, navPaint)
+                navPaint.shader = null
+            } else {
+                navPaint.color = col
+                canvas.drawRect(0f, top, width.toFloat(), h, navPaint)
+            }
+        }
+        t.drawPanel(canvas, 0f, panel.top.toFloat(), width.toFloat(), height.toFloat())
     }
 
     private var openAnim: ValueAnimator? = null
@@ -229,6 +256,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         // edge to edge on every version: the sheet itself runs under the navigation bar
         if (Build.VERSION.SDK_INT >= 30) window?.window?.setDecorFitsSystemWindows(false)
         prefs = Prefs(this)
+        DiagLog.installCrashLogger(this)
+        Ui.load(this)
         lang = prefs.language
         @Suppress("DEPRECATION")
         vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
@@ -293,7 +322,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     private fun enabledLangs(): List<String> {
         val l = ArrayList<String>()
         // the phone's language first (Hungarian if the phone is Hungarian, otherwise English)
-        val phoneHu = java.util.Locale.getDefault().language == "hu"
+        Ui.load(this)
+        val phoneHu = Ui.hu
         if (phoneHu && prefs.hungarianEnabled) l += "hu"
         if (prefs.englishEnabled) l += "en"
         if (!phoneHu && prefs.hungarianEnabled) l += "hu"
@@ -357,10 +387,25 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                 w.isNavigationBarContrastEnforced = false
                 w.setDecorFitsSystemWindows(false)
             }
+            // the inset is known before the first layout, so the keyboard opens at its final
+            // height (it used to open 1 nav-bar height too low and jump up on the first 123)
+            try {
+                val wm = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
+                r.bottomInset = wm.currentWindowMetrics.windowInsets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.navigationBars()).bottom
+            } catch (_: Exception) {
+            }
             r.setOnApplyWindowInsetsListener { _, insets ->
                 // the system's IME navigation bar reports itself as a caption bar
                 val types = android.view.WindowInsets.Type.navigationBars() or android.view.WindowInsets.Type.captionBar()
-                r.bottomInset = insets.getInsets(types).bottom
+                val b = insets.getInsets(types).bottom
+                if (b != r.bottomInset) {
+                    r.bottomInset = b
+                    // a layout request during insets dispatch can be dropped: ask again afterwards
+                    main.post {
+                        r.requestLayout()
+                        window?.window?.decorView?.requestLayout()
+                    }
+                }
                 scheduleReassert()
                 insets
             }
@@ -395,8 +440,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
      * the sheet's own transparency.
      */
     private fun navColor(t: GlassTheme): Int = when {
-        prefs.navStyle == 1 -> t.panelBottom or 0xFF000000.toInt()
         (root?.bottomInset ?: 0) > 0 -> android.graphics.Color.TRANSPARENT
+        prefs.navStyle == 2 -> t.panelBottom or 0xFF000000.toInt()
         else -> t.panelBottom
     }
 
@@ -601,6 +646,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         overlay.animations = prefs.animations
         overlay.previewStyle = prefs.previewAnim
         overlay.popupStyle = prefs.popupAnim
+        root?.navFill = prefs.navStyle
         overlay.popupGlass = prefs.popupGlass
         overlay.popupBlur = prefs.popupBlur / 100f
         bar.glassBlur = prefs.popupBlur / 100f

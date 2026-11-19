@@ -43,6 +43,8 @@ class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
+        DiagLog.installCrashLogger(this)
+        Ui.load(this)
         dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         window.decorView.background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
@@ -88,7 +90,12 @@ class SettingsActivity : Activity() {
             override fun end(message: String?) { if (message != null) testOut?.text = "❌ $message" }
         })
         testDict = d
-        d.start(Ui.hu)
+        try {
+            d.start(Ui.hu)
+        } catch (e: Throwable) {
+            DiagLog.add(this, "mic", "test crashed: $e")
+            testOut?.text = "❌ $e"
+        }
     }
 
     override fun onDestroy() {
@@ -154,6 +161,10 @@ class SettingsActivity : Activity() {
 
         // ---- languages
         val langs = card(T("Nyelvek"))
+        langs.addView(choiceRowThen(T("Az alkalmazás nyelve"), arrayOf(T("A telefon nyelve"), "Magyar", "English"), Prefs.K_UI_LANG, 0) {
+            Ui.load(this)
+            recreate()
+        })
         langs.addView(switchRow(T("Magyar"), T("QWERTZ kiosztás, magyar szótár és javítás"), Prefs.K_HU, true) { on ->
             if (!on && !prefs.englishEnabled) {
                 prefs.englishEnabled = true
@@ -214,7 +225,7 @@ class SettingsActivity : Activity() {
         // ---- look & feel
         val look = card(T("Megjelenés és visszajelzés"))
         look.addView(seekRow(T("Háttér átlátszatlansága"), Prefs.K_PANEL_OPACITY, 0, 100, 100, "%"))
-        look.addView(choiceRow(T("Navigációs sáv (a billentyűzet alatt)"), arrayOf(T("Üveg – átlátszó, mint a billentyűzet háttere"), T("A billentyűzet színe – tömör")), Prefs.K_NAV_STYLE, 0))
+        look.addView(choiceRow(T("Navigációs sáv (a billentyűzet alatt)"), arrayOf(T("Üveg – teljesen átlátszó"), T("Üveg, az alja fokozatosan tömör (eltakarja az alkalmazás sötét sávját)"), T("A billentyűzet színe – tömör")), Prefs.K_NAV_STYLE, 1))
         look.addView(seekRow(T("Gombok átlátszatlansága"), Prefs.K_KEY_OPACITY, 15, 100, 100, "%"))
         look.addView(seekRow(T("Billentyűmagasság"), Prefs.K_KEY_HEIGHT, 80, 130, 100, "%"))
         look.addView(seekRow(T("Alsó sáv magassága (földgömb, mikrofon)"), Prefs.K_STRIP_HEIGHT, 28, 80, 46, " dp"))
@@ -434,6 +445,21 @@ class SettingsActivity : Activity() {
         }
         r.addView(sw)
         r.setOnClickListener { sw.toggle(); sw.postInvalidateOnAnimation() }
+        return r
+    }
+
+    private fun choiceRowThen(title: String, options: Array<String>, key: String, def: Int, then: () -> Unit): View {
+        val r = row()
+        val l = labels(title, options.getOrElse(prefs.sp.getInt(key, def)) { options[0] })
+        r.addView(l)
+        r.setOnClickListener {
+            dialog().setTitle(title)
+                .setSingleChoiceItems(options, prefs.sp.getInt(key, def)) { d, which ->
+                    prefs.sp.edit().putInt(key, which).commit()
+                    d.dismiss()
+                    then()
+                }.frosted()
+        }
         return r
     }
 

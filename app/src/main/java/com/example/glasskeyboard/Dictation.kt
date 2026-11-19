@@ -56,6 +56,13 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
     private var useLanguage = true
     private var startedAt = 0L
     private var heard = false
+    /** words actually arrived (partial result) – "speech begins" alone is not trusted */
+    private var gotWords = false
+    /** the user tapped the mic to finish: no more ways are tried after this */
+    private var stopped = false
+    /** our own recording was silent: the keyboard process itself may not use the microphone */
+    private var ownSilent = false
+    private var boosted = false
     private var maxRms = -100f
     private val errors = ArrayList<String>()
     private var modelAsked = false
@@ -83,20 +90,31 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
         false
     }
 
+    /** Google first (the Google app, then "Speech Services by Google"), then others; the default last. */
+    private fun rank(c: ComponentName): Int = when {
+        c.packageName == google -> 0
+        c.packageName == "com.google.android.tts" -> 1
+        c.packageName.startsWith("com.google") -> 2
+        c.packageName == ctx.packageName -> 9
+        else -> 5
+    }
+
     private fun plan(): List<Way> {
-        val names = services()
+        val names = services().filter { it.packageName != ctx.packageName }.sortedBy { rank(it) }
         val self = Build.VERSION.SDK_INT >= 33
         val out = ArrayList<Way>()
-        val g = names.filter { it.packageName == google }
-        g.forEach { out += Way(it, false) }
-        if (self) g.forEach { out += Way(it, true) }
+        // a recognizer in another app recording by itself often gets only silence (log: rms
+        // stays at -2): first feed it the keyboard's own recording, then let it record itself
+        for (n in names) {
+            if (self) out += Way(n, true)
+            out += Way(n, false)
+        }
         if (onDeviceAvailable()) {
             if (self) out += Way(onDevice, true)
             out += Way(onDevice, false)
         }
+        // the system default is often not set up (instant "client error")
         out += Way(null, false)
-        if (self) out += Way(null, true)
-        names.filter { it.packageName != google }.forEach { out += Way(it, false) }
         return out
     }
 
@@ -104,6 +122,7 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
         c == null -> "default"
         c == onDevice -> "offline"
         c.packageName == google -> "google"
+        c.packageName == "com.google.android.tts" -> "google-speech"
         else -> c.packageName.substringAfterLast('.')
     }
 
@@ -156,6 +175,9 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
         index = 0
         retries = 0
         errors.clear()
+        stopped = false
+        ownSilent = false
+        boosted = false
         active = true
         log("start (${if (hu) "hu" else "en"}), ways: " + ways.joinToString { name(it.comp) + if (it.selfAudio) "+mic" else "" })
         next(0)
@@ -164,8 +186,9 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
     /** The user tapped the mic again: finish listening (the result still arrives). */
     fun stop() {
         if (!active) return
+        stopped = true
         if (listening) {
-            log("stop by user")
+            log("stop by user (rms max $maxRms, mic peak ${mic.peak}, words $gotWords)")
             mic.stop()
             try {
                 rec?.stopListening()
@@ -198,6 +221,7 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
     }
 
     private fun finish(message: String?, silent: Boolean = false) {
+        if (boosted) MicBoostActivity.release()
         active = false
         listening = false
         attempt++
@@ -222,6 +246,10 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
         } catch (_: Exception) {
         }
         recWarm = false
+        if (stopped) {
+            finish((if (hu) "Diktálás nem sikerült: " else "Dictation failed: ") + reason)
+            return
+        }
         if (sameAgain && retries < 2) {
             retries++
             next(400)
@@ -235,6 +263,17 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
 
     private fun run() {
         val w = ways.getOrNull(index)
+        if (w == null && ownSilent && !boosted && MicBoostActivity.start(ctx)) {
+            // Even the keyboard's own recording was silent: the phone does not let the keyboard
+            // process use the microphone in the background. A tiny invisible screen of the app
+            // makes it a foreground app for the time of the dictation; then everything again.
+            boosted = true
+            log("own recording silent: foreground boost, starting over")
+            index = 0
+            retries = 0
+            next(600)
+            return
+        }
         if (w == null) {
             log("all ways failed")
             finish(
@@ -262,6 +301,7 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
         recComp = w.comp
         val a = attempt
         heard = false
+        gotWords = false
         maxRms = -100f
         log("try ${name(w.comp)}${if (w.selfAudio) "+mic" else ""}${if (reuse) " (warm)" else ""}${if (retries > 0) " retry $retries" else ""}")
         r.setRecognitionListener(object : RecognitionListener {
@@ -300,8 +340,8 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
                 when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
                         // believable "nothing said" only if the recognizer really got sound
-                        val gotSound = if (w.selfAudio) mic.peak in 40..2500 else maxRms > 1f
-                        if (heard || (gotSound && ms > 1500)) {
+                        val gotSound = if (w.selfAudio) mic.peak in 40..2500 else maxRms > 0f
+                        if (gotWords || (gotSound && ms > 1500)) {
                             finish(if (hu) "Nem hallottam semmit – próbáld újra." else "Didn't catch that – try again.")
                         } else giveUp(if (w.selfAudio && mic.peak > 2500) (if (hu) "nem fogadja a hangot" else "ignores the audio") else (if (hu) "csak csendet kap" else "gets only silence"))
                     }
@@ -338,7 +378,7 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
                 if (!text.isNullOrBlank()) {
                     finish(null)
                     ui.result(text)
-                } else if (heard) {
+                } else if (gotWords || (!w.selfAudio && maxRms > 0f) || (w.selfAudio && mic.peak in 40..2500)) {
                     finish(if (hu) "Nem értettem – próbáld újra." else "Couldn't understand – try again.")
                 } else giveUp(if (hu) "üres eredmény" else "empty result")
             }
@@ -348,6 +388,7 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
                 val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 if (!text.isNullOrBlank()) {
                     heard = true
+                    gotWords = true
                     ui.partial(text)
                 }
             }
@@ -389,19 +430,20 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
         }, 5000)
         // listening, but is any sound arriving?
         main.postDelayed({
-            if (!active || a != attempt || heard) return@postDelayed
+            if (!active || a != attempt || gotWords) return@postDelayed
             if (w.selfAudio) {
                 when {
                     mic.peak < 40 -> {
                         log("own recording is silent too (mic peak ${mic.peak})")
-                        if (index + 1 >= ways.size) finish(if (hu) "A mikrofon nem ad hangot (más alkalmazás használja?)" else "The microphone gives no sound (used by another app?)")
+                        ownSilent = true
+                        giveUp(if (hu) "a saját felvétel is csend" else "own recording silent too")
                     }
                     mic.peak > 4000 -> giveUp(if (hu) "nem fogadja a hangot" else "ignores the audio")
                 }
-            } else if (maxRms <= 1f && recWarm) {
+            } else if (maxRms <= 0f && recWarm) {
                 giveUp(if (hu) "csak csendet kap" else "gets only silence")
             }
-        }, 3000)
+        }, 2800)
     }
 
     private fun errorText(e: Int): String = when (e) {

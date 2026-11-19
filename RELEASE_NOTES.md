@@ -1,8 +1,6 @@
-## Glass Keyboard 0.0.16
+## Glass Keyboard 0.0.17
 
-- **Dictation rewritten** (`Dictation.kt`): tries Google's recognizer first (recording by itself, then fed with the keyboard's own recording), then the phone's offline recognizer, then the system default and the rest. Google's service is connected in advance when the keyboard opens, so the first press no longer hits a cold service. An empty result, silence or a recognizer that ignores the audio moves on to the next one, and every failure now shows a message (also in the suggestion bar)
-- **Navigation bar area:** new setting – *Glass* (see-through like the keyboard background, default) or *Keyboard color* (solid). The keyboard also clears any background the system or the phone maker puts into the keyboard window's navigation bar views
-- **Diagnostics** in the settings: a log of dictation attempts and of the keyboard window's layout, a dictation test that runs inside the settings, and a copy button
-- **Settings keep their scroll position** when opened again
-- **Phone language by default:** the settings and the default keyboard language follow the phone's language (Hungarian), otherwise English
-- README, release notes and build workflow are now in English
+- **Dictation:** the diagnostics log showed that the default recognizer fails at once (client error) and that *Speech Services by Google*, recording by itself, only receives silence (sound level stays at -2). Now every recognizer is first fed with the keyboard's own recording, then tried the usual way; the default comes last. "Speech begins" alone is no longer trusted – silence is detected from the sound level. If even the keyboard's own recording is silent, an invisible, untouchable screen of the app keeps the app in the foreground for the time of the dictation and everything is tried again. Tapping the mic to stop no longer moves on to other recognizers
+- **Navigation bar area:** the keyboard now opens at its final height (it used to open one navigation-bar height too low and jump up on the first 123). New option *Glass fading to solid at the bottom* (default): under the gesture handle many apps paint their own dark bar, which showed through the see-through keyboard; an opaque backing in the keyboard's colour fades in over the last few millimetres and hides it. *Fully see-through* and *Solid* are still available
+- **App language** can be chosen in the settings (phone language / Magyar / English)
+- Crashes are written into the diagnostics log; the dictation test in the settings is protected against crashes

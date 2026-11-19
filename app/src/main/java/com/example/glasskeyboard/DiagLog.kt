@@ -31,6 +31,32 @@ object DiagLog {
         ctx.getSharedPreferences("diag", Context.MODE_PRIVATE).edit().putString("log", lines.joinToString("\n")).apply()
     }
 
+    /** Writes crashes of the app into the log (saved at once, before the process dies). */
+    fun installCrashLogger(ctx: Context) {
+        val app = ctx.applicationContext
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        if (prev is CrashLogger) return
+        Thread.setDefaultUncaughtExceptionHandler(CrashLogger(app, prev))
+    }
+
+    private class CrashLogger(val ctx: Context, val prev: Thread.UncaughtExceptionHandler?) : Thread.UncaughtExceptionHandler {
+        override fun uncaughtException(t: Thread, e: Throwable) {
+            try {
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                val trace = sw.toString().lines().take(14).joinToString("\n")
+                synchronized(DiagLog) {
+                    load(ctx)
+                    lines.addLast("${fmt.format(Date())} [crash] $trace")
+                    while (lines.size > MAX) lines.removeFirst()
+                    ctx.getSharedPreferences("diag", Context.MODE_PRIVATE).edit().putString("log", lines.joinToString("\n")).commit()
+                }
+            } catch (_: Throwable) {
+            }
+            prev?.uncaughtException(t, e)
+        }
+    }
+
     @Synchronized
     fun text(ctx: Context): String {
         load(ctx)
