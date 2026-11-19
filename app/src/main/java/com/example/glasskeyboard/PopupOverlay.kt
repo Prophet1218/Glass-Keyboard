@@ -428,7 +428,7 @@ class PopupOverlay(context: Context) : View(context) {
         val key = b.key
         shape.reset()
         // the picker is a capsule, concentric with the round glass lens inside it
-        val br = if (b === popup) bubble.height() / 2f else 12f * dp
+        val br = if (b === popup) bubble.height() / 2f else minOf(t.keyRadius * 1.25f, bubble.width() / 2f)
         shape.addRoundRect(bubble, br, br, Path.Direction.CW)
         tmpPath.reset()
         tmpPath.addRoundRect(key, t.keyRadius, t.keyRadius, Path.Direction.CW)

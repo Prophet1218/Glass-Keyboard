@@ -28,6 +28,10 @@ class GlassTheme(
     val params: GlassParams = GlassParams(),
     /** background preset: 0 = the glass sheet, otherwise a solid colour from [BACKGROUNDS] */
     val bg: Int = 0,
+    /** corner radius of the keys (and the key preview balloon) in dp; < 0 = the style's default */
+    keyRadiusDp: Float = -1f,
+    /** corner radius of the sheet's top corners in dp */
+    panelRadiusDp: Float = 24f,
 ) {
     /** the solid background colour of the preset, or 0 for glass */
     val bgColor: Int = BACKGROUNDS.getOrNull(bg)?.color ?: 0
@@ -151,7 +155,8 @@ class GlassTheme(
     val popupShadow = if (dark) 0x80000000.toInt() else 0x33000000
     val candidateHighlight = if (dark) 0x40FFFFFF else 0xCCFFFFFF.toInt()
 
-    val keyRadius = (if (liquid) 9.5f else 8.5f) * dp
+    val keyRadius = (if (keyRadiusDp >= 0f) keyRadiusDp else if (liquid) 9.5f else 8.5f) * dp
+    val panelRadius = panelRadiusDp * dp
 
     val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -302,7 +307,7 @@ class GlassTheme(
 
     /** The keyboard sheet from [top] to the bottom of the view. */
     fun drawPanel(c: Canvas, left: Float, top: Float, right: Float, bottom: Float) {
-        val r = 24f * dp
+        val r = panelRadius
         // the paint is shared with the keys and the suggestion bar: its alpha (left over from the
         // last colour used there) would multiply the gradient, and the sheet would fade out the
         // next time it is redrawn (e.g. after the 123 key). Start from a fully opaque paint.
@@ -332,17 +337,18 @@ class GlassTheme(
         if (!params.rim) return
         // the light arc along the top edge fades out as it turns down at the corners, instead
         // of ending in a hard cut where it was clipped
+        val fadeLen = maxOf(r, 10f * dp)
         c.save()
-        c.clipRect(left, top, right, top + r * 1.6f)
+        c.clipRect(left, top, right, top + fadeLen * 1.6f)
         tmp.set(left + 0.5f * dp, top + 0.5f * dp, right - 0.5f * dp, bottom + r)
         rimPaint.color = Color.WHITE
         rimPaint.strokeWidth = 1f * dp
         rimPaint.shader = LinearGradient(
-            0f, top, 0f, top + r * 1.5f,
+            0f, top, 0f, top + fadeLen * 1.5f,
             intArrayOf(panelRim, withAlpha(panelRim, 0.45f), panelRim and 0x00FFFFFF),
             floatArrayOf(0f, 0.3f, 1f), Shader.TileMode.CLAMP
         )
-        c.drawRoundRect(tmp, r, r, rimPaint)
+        c.drawRoundRect(tmp, maxOf(r, 0.5f * dp), maxOf(r, 0.5f * dp), rimPaint)
         rimPaint.shader = null
         rimPaint.strokeWidth = (if (liquid) 1.2f else 1f) * dp
         c.restore()

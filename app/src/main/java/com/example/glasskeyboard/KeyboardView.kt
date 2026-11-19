@@ -135,7 +135,13 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
 
     private val rowHeight get() = 54f * dp * heightScale
     private val topPad get() = 4f * dp
-    private val stripHeight get() = if (showGlobe || showMic) stripDp * dp else 8f * dp
+    /** extra space below the last key row (setting), dp */
+    var bottomGapDp = 0f
+        set(v) {
+            field = v
+            requestLayout()
+        }
+    private val stripHeight get() = (if (showGlobe || showMic) stripDp * dp else 8f * dp) + bottomGapDp * dp
     private val sidePad get() = 3f * dp
     private val gapH get() = 6f * dp
     private val gapV get() = 11f * dp * heightScale

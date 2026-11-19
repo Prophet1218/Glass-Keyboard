@@ -18,6 +18,11 @@ object Ui {
     fun t(huText: String): String = if (hu) huText else EN[huText] ?: huText
 
     private val EN = hashMapOf(
+        "Térköz a billentyűzet alján (feljebb emeli a gombokat)" to "Space at the bottom of the keyboard (raises the keys)",
+        "Gombok sarkainak kerekítése (betűbuborékra is)" to "Key corner radius (also the key preview)",
+        "A billentyűzet felső sarkainak kerekítése" to "Keyboard top corner radius",
+        "Visszatörlés visszavonja a javítást" to "Backspace undoes autocorrect",
+        "Javítás után az első visszatörlés visszahozza, amit eredetileg beírtál. Kikapcsolva a visszatörlés egyszerűen töröl." to "Right after a correction, the first backspace brings back what you typed. When off, backspace simply deletes.",
         "Bekapcsolás és kipróbálás" to "Setup and test",
         "A billentyűzet bekapcsolása a rendszerben, kiválasztása és egy próbamező" to "Enable and select the keyboard, and a field to try it",
         "Az alkalmazás nyelve és a billentyűzet nyelvei" to "App language and keyboard languages",

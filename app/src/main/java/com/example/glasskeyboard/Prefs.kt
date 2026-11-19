@@ -55,12 +55,20 @@ class Prefs(context: Context) {
     val spaceCursor get() = b(K_SPACE_CURSOR, true)
     val sound get() = b(K_SOUND, false)
     val showMic get() = false
+    /** extra space below the last key row (above the gesture handle), dp */
+    val bottomGap get() = sp.getInt(K_BOTTOM_GAP, 0)
+    /** backspace right after an autocorrection brings back what was typed */
+    val undoCorrection get() = b(K_UNDO_CORRECT, true)
+    /** corner radius of the keys and the key preview balloon, dp */
+    val keyRadius get() = sp.getInt(K_KEY_RADIUS, 10)
+    /** corner radius of the keyboard sheet's top corners, dp */
+    val panelRadius get() = sp.getInt(K_PANEL_RADIUS, 24)
     /** background preset (GlassTheme.BACKGROUNDS): 0 glass, others solid colours */
     val background get() = sp.getInt(K_BG, 0)
     /** strip under the keys (gesture handle): 0 glass, 1 glass fading to solid, 2 solid */
     val navStyle get() = sp.getInt(K_NAV_STYLE, 0)
-    val numberRow get() = b(K_NUMBER_ROW, false)
-    val periodKey get() = b(K_PERIOD_KEY, false)
+    val numberRow get() = b(K_NUMBER_ROW, true)
+    val periodKey get() = b(K_PERIOD_KEY, true)
     val animations get() = b(K_ANIM, true)
     /** 0 = liquid glass, 1 = frosted glass, 2 = off (solid) */
     val glassStyle get() = sp.getInt(K_GLASS, 0)
@@ -68,16 +76,16 @@ class Prefs(context: Context) {
     val stripHeight get() = sp.getInt(K_STRIP_HEIGHT, 46)
     /** opacity of the keyboard background and of the keys, percent */
     val panelOpacity get() = sp.getInt(K_PANEL_OPACITY, 100)
-    val keyOpacity get() = sp.getInt(K_KEY_OPACITY, 100)
+    val keyOpacity get() = sp.getInt(K_KEY_OPACITY, 65)
     /** opening animation: 0 = slide, slowing down; 1 = springy slide; 2 = fade & zoom; 3 = even slide; 4 = none */
     val openAnim get() = sp.getInt(K_OPEN_ANIM, 0)
-    val openMs get() = sp.getInt(K_OPEN_MS, 320)
+    val openMs get() = sp.getInt(K_OPEN_MS, 400)
     /** suggestion change: 0 fade, 1 float up, 2 zoom, 3 roll, 4 none */
-    val suggAnim get() = sp.getInt(K_SUGG_ANIM, 0)
+    val suggAnim get() = sp.getInt(K_SUGG_ANIM, 4)
     /** key touch: 0 lift (grow), 1 press in (shrink), 2 glow, 3 none */
-    val pressAnim get() = sp.getInt(K_PRESS_ANIM, 0)
+    val pressAnim get() = sp.getInt(K_PRESS_ANIM, 1)
     /** typing balloon: 0 spring, 1 float up, 2 fade, 3 none */
-    val previewAnim get() = sp.getInt(K_PREVIEW_ANIM, 0)
+    val previewAnim get() = sp.getInt(K_PREVIEW_ANIM, 1)
     /** long-press picker: 0 spring, 1 unfold sideways, 2 fade */
     val popupAnim get() = sp.getInt(K_POPUP_ANIM, 0)
     val chaos get() = b(K_CHAOS, true)
@@ -88,7 +96,7 @@ class Prefs(context: Context) {
         blur = sp.getInt(K_BLUR, 2),
         refrHeight = sp.getInt(K_REFR_H, 30),
         refrOffset = sp.getInt(K_REFR_OFF, 50),
-        dispersion = sp.getInt(K_DISP, 0),
+        dispersion = sp.getInt(K_DISP, 10),
         darken = sp.getInt(K_GLASS_DARK, 0),
         keyDarken = sp.getInt(K_KEY_DARK, 0),
         rim = b(K_RIM, true),
@@ -103,7 +111,7 @@ class Prefs(context: Context) {
     }
 
     /** typing balloon material: 0 liquid glass, 1 frosted glass, 2 solid */
-    val previewGlass get() = sp.getInt(K_PREVIEW_GLASS, 2)
+    val previewGlass get() = sp.getInt(K_PREVIEW_GLASS, 1)
     /** toolbar button background: 0 liquid glass, 1 frosted glass, 2 solid */
     val toolGlass get() = sp.getInt(K_TOOL_GLASS, 0)
     /** Klipy GIF API key (free from partner.klipy.com) */
@@ -115,10 +123,10 @@ class Prefs(context: Context) {
     /** long-press picker material: 0 liquid glass, 1 frosted glass, 2 solid */
     val popupGlass get() = sp.getInt(K_POPUP_GLASS, 0)
     /** Long-press menu glass: 0 = clear glass … 100 = strongly blurred / milky. */
-    val popupBlur get() = sp.getInt(K_POPUP_BLUR, 45)
+    val popupBlur get() = sp.getInt(K_POPUP_BLUR, 60)
 
     /** animation speed in percent (100 = normal) */
-    val animSpeed get() = sp.getInt(K_ANIM_SPEED, 100)
+    val animSpeed get() = sp.getInt(K_ANIM_SPEED, 170)
 
     /** 0 = off, 1 = light, 2 = strong */
     val haptics get() = sp.getInt(K_HAPTICS, 1)
@@ -150,6 +158,10 @@ class Prefs(context: Context) {
         const val K_NAV_STYLE = "nav_style3"
         const val K_UI_LANG = "ui_lang"
         const val K_BG = "background"
+        const val K_BOTTOM_GAP = "bottom_gap"
+        const val K_UNDO_CORRECT = "undo_correct"
+        const val K_KEY_RADIUS = "key_radius"
+        const val K_PANEL_RADIUS = "panel_radius"
         const val K_HAPTICS = "haptics"
         const val K_THEME = "theme"
         const val K_KEY_HEIGHT = "key_height"

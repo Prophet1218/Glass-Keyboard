@@ -413,7 +413,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private fun applyTheme() {
-        val t = GlassTheme(this, prefs.theme, prefs.glassStyle, prefs.panelOpacity, prefs.keyOpacity, prefs.glass(), prefs.background)
+        val t = GlassTheme(this, prefs.theme, prefs.glassStyle, prefs.panelOpacity, prefs.keyOpacity, prefs.glass(), prefs.background, prefs.keyRadius.toFloat(), prefs.panelRadius.toFloat())
         theme = t
         if (root == null) return
         root?.theme = t
@@ -551,10 +551,6 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         if (root == null || !isInputViewShown) return
         window?.window?.let { navGuard.attach(it, navColor(t)) }
         applyWindowBlur(t, force = false)
-        try {
-            dumpWindow()
-        } catch (_: Exception) {
-        }
     }
 
     /** The keyboard as it looks now (sheet + suggestions + keys) at [scale]: the picker's glass shows it. */
@@ -638,6 +634,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         kb.spaceCursor = prefs.spaceCursor
         kb.heightScale = prefs.keyHeight / 100f
         kb.stripDp = prefs.stripHeight.toFloat()
+        kb.bottomGapDp = prefs.bottomGap.toFloat()
         kb.animations = prefs.animations
         overlay.animations = prefs.animations
         overlay.previewStyle = prefs.previewAnim
@@ -1193,7 +1190,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         cached = null
         autoSpace = false
         val lc = lastCorrection
-        if (repeat == 0 && lc != null) {
+        if (repeat == 0 && lc != null && prefs.undoCorrection) {
             val tail = lc.corrected + lc.sep
             if (textBefore(tail.length) == tail) {
                 // undo the autocorrection and trust the typed word from now on

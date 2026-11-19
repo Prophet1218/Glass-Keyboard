@@ -400,7 +400,11 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         if (toolbarWanted()) {
             val i = (e.x / (width / TOOLS.toFloat())).toInt().coerceIn(0, TOOLS - 1)
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> toolPressed = i
+                MotionEvent.ACTION_DOWN -> {
+                    toolPressed = i
+                    // a light tick when a toolbar button is touched
+                    performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP, android.view.HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING)
+                }
                 MotionEvent.ACTION_MOVE -> if (i != toolPressed) toolPressed = -1
                 MotionEvent.ACTION_UP -> {
                     val p = toolPressed
