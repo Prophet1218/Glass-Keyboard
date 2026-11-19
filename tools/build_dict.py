@@ -50,8 +50,20 @@ def filt_accent(freq):
             out[w] = f
     return out
 
-def hungarian(wf_dir, subs):
+def hungarian(wf_dir, subs, valid_path=None):
+    """Hungarian word list.
+
+    With [valid_path] (words accepted by the Hunspell hu_HU dictionary, Magyar Ispell, see
+    tools/hunspell_check.md) the spell checker decides: every subtitle form it accepts is kept
+    even if rare (many more inflected and compound forms), forms it rejects need to be frequent
+    (slang, names, loanwords), and accent-less spellings of real words ("animacio") are dropped.
+    The dictionary's own headwords are added too.
+    """
     wf = mp.load(os.path.join(wf_dir, 'small_hu.msgpack.gz'))
+    valid = None
+    if valid_path and os.path.exists(valid_path):
+        valid = set(l.strip() for l in open(valid_path, encoding='utf-8') if l.strip())
+    accented = {deacc(v) for v in valid if deacc(v) != v} if valid else set()
     sub, tot = {}, 0
     for line in open(subs, encoding='utf-8'):
         p = line.split()
@@ -60,23 +72,40 @@ def hungarian(wf_dir, subs):
         # old subtitles use Latin-1 look-alikes for ő/ű
         w = p[0].lower().replace('õ', 'ő').replace('û', 'ű').replace('ô', 'ő').replace('ũ', 'ű')
         c = int(p[1]); tot += c
-        if c >= 6:
+        if c >= 2:
             sub[w] = sub.get(w, 0) + c
     res = {}
     for w, c in sub.items():
         if not HU_RE.match(w):
             continue
+        if valid is not None:
+            ok = w in valid
+            if not ok and (deacc(w) == w and w in accented):
+                continue          # accent-less spelling of a real word
+            if not ok and c < 40:
+                continue          # rare and unknown to the spell checker: most likely a typo
+        elif c < 6:
+            continue
         f = c / tot
         if w in wf:
             f = math.sqrt(f * wf[w])
         else:
-            if c < 12:
+            if valid is None and c < 12:
                 continue
             f *= 0.5
         res[w] = f
     for w, f in wf.items():
-        if w not in res and HU_RE.match(w):
-            res[w] = f * 0.7
+        if w in res or not HU_RE.match(w):
+            continue
+        if valid is not None and w not in valid and (f < 3e-6 or (deacc(w) == w and w in accented)):
+            continue
+        res[w] = f * 0.7
+    if valid is not None:
+        # headwords of the spell checker that the corpora do not have: rare but real
+        floor = 0.6 / tot
+        for w in valid:
+            if w not in res and HU_RE.match(w) and len(w) >= 2:
+                res[w] = floor
     for w in HU_MISSPELLINGS:
         res.pop(w, None)
     return filt_accent(res)
@@ -97,13 +126,15 @@ def english(wf_dir):
 def fbyte(f):
     return max(1, min(255, 1 + round((math.log10(f) + 9.0) * 31)))
 
-def write_trie(words, out):
+def write_trie(words, out, verified=None):
     root = {'c': {}, 'f': 0}
     for w, f in words.items():
         n = root
         for ch in w:
             n = n['c'].setdefault(ch, {'c': {}, 'f': 0})
         n['f'] = max(n['f'], fbyte(f))
+        if verified is not None and w in verified:
+            n['v'] = True
     # best frequency in each subtree (iterative post-order)
     stack = [(root, False)]
     while stack:
@@ -124,11 +155,14 @@ def write_trie(words, out):
             order.append(c)
     buf = bytearray(b'GKD1' + struct.pack('>I', len(order)))
     for n in order:
-        buf += struct.pack('>HBB', ord(n['ch']), n['f'], n['m']) + n['first'].to_bytes(3, 'big') + bytes([n['cnt']])
+        # top bit of the character: the word ending here is accepted by the spell checker
+        buf += struct.pack('>HBB', ord(n['ch']) | (0x8000 if n.get('v') else 0), n['f'], n['m']) + n['first'].to_bytes(3, 'big') + bytes([n['cnt']])
     open(out, 'wb').write(buf)
     print(out, len(words), 'words', len(order), 'nodes', len(buf), 'bytes')
 
 if __name__ == '__main__':
     wf_dir, subs, out = sys.argv[1], sys.argv[2], sys.argv[3]
-    write_trie(hungarian(wf_dir, subs), os.path.join(out, 'hu.dict'))
+    valid = sys.argv[4] if len(sys.argv) > 4 else None
+    vset = set(l.strip() for l in open(valid, encoding='utf-8')) if valid else None
+    write_trie(hungarian(wf_dir, subs, valid), os.path.join(out, 'hu.dict'), vset)
     write_trie(english(wf_dir), os.path.join(out, 'en.dict'))

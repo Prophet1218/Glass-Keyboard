@@ -129,6 +129,23 @@ class GlassTheme(
         keySpecialPressed = withAlpha(keySpecialPressed, keyAlpha)
     }
 
+    /**
+     * Glass colour, colour strength, glass darkening and key darkening applied to the floating
+     * glass parts too (toolbar buttons, key preview, accent picker, selection capsule), alpha kept.
+     */
+    fun glassTint(c: Int): Int = kfx(fx(c))
+
+    /** Toolbar icon colour, tinted towards the chosen glass colour. */
+    val toolIcon: Int get() {
+        var c = stripIcon
+        if (params.hueStrength > 0) {
+            val tintCol = Color.HSVToColor(floatArrayOf(params.hue.toFloat(), if (dark) 0.45f else 0.7f, if (dark) 1f else 0.55f))
+            c = mixRgb(c, tintCol, (params.hueStrength / 100f * 1.2f).coerceAtMost(0.85f))
+        }
+        if (params.keyDarken > 0 && dark) c = mixRgb(c, Color.BLACK, params.keyDarken / 250f)
+        return c
+    }
+
     /** Extra darkening of the keys only. */
     private fun kfx(c: Int): Int = if (params.keyDarken > 0) mixRgb(c, Color.BLACK, params.keyDarken / 100f) else c
 

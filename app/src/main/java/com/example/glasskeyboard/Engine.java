@@ -688,15 +688,18 @@ public final class Engine {
         }
         String correction = null;
         if (dictValid) {
+            // confirmed by the spell checker (Magyar Ispell): a real word, corrected only when a
+            // very close word is overwhelmingly more common ("szertelek" → "szeretlek")
+            boolean verified = dict.verified(lower);
             // A real word was typed: only put back missing accents when the accented form is far more common.
             if (best != null && accentOnly(lower, best.word) && user.count(lower) < UserDict.KNOWN) {
                 int ft = dict.freq(lower);
-                if (ft > 0 && best.freq >= ft + 45 && best.score > score(new Cand(lower, 0, ft, false), prev) + 1.2) {
+                if (ft > 0 && best.freq >= ft + (verified ? 80 : 45) && best.score > score(new Cand(lower, 0, ft, false), prev) + 1.2) {
                     correction = best.word;
                 }
             }
             // A common run-together pair ("nemtudom") becomes two words when both are far more common.
-            if (correction == null && user.count(lower) < UserDict.KNOWN) {
+            if (correction == null && !verified && user.count(lower) < UserDict.KNOWN) {
                 int ft = dict.freq(lower);
                 for (Cand c : list) {
                     if (ft <= 105 && c.word.indexOf(' ') > 1 && c.word.indexOf(' ') < c.word.length() - 2 && c.freq >= ft + 40) {
@@ -710,7 +713,9 @@ public final class Engine {
             if (correction == null && best != null && user.count(lower) < UserDict.KNOWN) {
                 int ft = dict.freq(lower);
                 boolean dropsAccent = looseKey(lower).equals(looseKey(best.word)) && !accentsKept(lower, best.word);
-                if (ft < 100 && best.cost <= 1.3 && best.freq >= ft + 60 && !dropsAccent) correction = best.word;
+                if (verified) {
+                    if (ft < 80 && best.cost <= 1.0 && best.freq >= ft + 100 && !dropsAccent && best.word.indexOf(' ') < 0) correction = best.word;
+                } else if (ft < 100 && best.cost <= 1.3 && best.freq >= ft + 60 && !dropsAccent) correction = best.word;
             }
         } else if (accentFix != null) {
             // The same word with its accents is in the dictionary ("diktalas" → "diktálás",
@@ -719,6 +724,10 @@ public final class Engine {
         } else if (morphValid) {
             // Looks like a valid inflected/compound form; correct only to a very close, common word.
             if (best != null && ((best.cost <= 0.6 && best.freq >= 80) || (best.cost <= 1.0 && best.freq >= 140))) correction = best.word;
+            // The big dictionary holds almost every real form, each confirmed by the spell
+            // checker: an unknown word that only looks inflected ("országnk" = ország + n + k) is
+            // far more likely a typo of a close, confirmed word.
+            if (correction == null && best != null && best.cost <= 1.0 && best.freq >= 70 && dict.verified(best.word)) correction = best.word;
             // …or put back the accents of an inflected form ("nyomasakor" → "nyomásakor")
             if (correction == null && hungarian) {
                 String restored = restoreAccents(lower);
@@ -726,7 +735,8 @@ public final class Engine {
             }
         } else {
             if (best != null && best.cost <= mc) correction = best.word;
-            if (hungarian && (best == null || best.cost > 0.7)) {
+            boolean solid = best != null && best.cost <= Math.min(mc, 1.0) && best.freq >= 60 && dict.verified(best.word);
+            if (hungarian && !solid && (best == null || best.cost > 0.7)) {
                 String restored = restoreAccents(lower);
                 if (restored != null) correction = restored;
             }

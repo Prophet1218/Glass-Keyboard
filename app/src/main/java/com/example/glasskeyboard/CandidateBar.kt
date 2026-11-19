@@ -184,7 +184,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
         val w = width / TOOLS.toFloat()
         val cy = toolCy()
         for (i in 0 until TOOLS) {
-            val col = if (i == activeTool) t.accent else t.stripIcon
+            val col = if (i == activeTool) t.accent else t.toolIcon
             t.icon.color = col
             t.iconFill.color = col
             t.icon.alpha = (Color.alpha(col) * alpha).toInt()
@@ -257,12 +257,12 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
                 }
                 toolGlass == 1 -> toolLens.drawRaw(
                     c, toolRect, r, 1f, 0.5f, 0f, 0f, 0f, t.params.rim, t.params.convex,
-                    brighten(scaled(if (t.dark) 0x33FFFFFF else 0x99FFFFFF.toInt()), press), t.dark, alpha,
+                    brighten(t.glassTint(scaled(if (t.dark) 0x33FFFFFF else 0x99FFFFFF.toInt())), press), t.dark, alpha,
                 )
                 // pressed liquid glass bends a little more, like a drop being pushed
                 else -> toolLens.drawRaw(
                     c, toolRect, r, 1f, minOf(t.lensHeight, r * 0.6f), t.lensAmount * (0.4f + 0.35f * press), t.lensDispersion, 0f,
-                    t.params.rim, t.params.convex, brighten(scaled(if (t.dark) 0x1FFFFFFF else 0x4DFFFFFF), press), t.dark, alpha,
+                    t.params.rim, t.params.convex, brighten(t.glassTint(scaled(if (t.dark) 0x1FFFFFFF else 0x4DFFFFFF)), press), t.dark, alpha,
                 )
             }
         }
@@ -371,7 +371,7 @@ class CandidateBar(context: Context, private val onPick: (Candidate) -> Unit) : 
                 }
                 lens.draw(
                     canvas, lensRect, lensRect.height() / 2f, 1f, t,
-                    if (t.solid) t.candidateHighlight else if (t.dark) 0x24FFFFFF else 0x59FFFFFF, pills[i],
+                    if (t.solid) t.candidateHighlight else t.glassTint(if (t.dark) 0x24FFFFFF else 0x59FFFFFF), pills[i],
                 )
             }
         }

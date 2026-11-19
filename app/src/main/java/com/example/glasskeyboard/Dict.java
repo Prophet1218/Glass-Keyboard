@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
  * Read-only word trie stored in a compact binary file (see tools/build_dict.py).
  *
  * Layout: "GKD1", int nodeCount, then 8 bytes per node:
- * char (u16) | frequency (u8, 0 = not a word end) | best frequency in subtree (u8) |
+ * char (u16; top bit = the word ending here is accepted by the Hunspell spell checker) | frequency (u8, 0 = not a word end) | best frequency in subtree (u8) |
  * index of first child (u24) | child count (u8).
  * Children of a node are stored next to each other, ordered by their best subtree frequency.
  * The buffer is memory-mapped, so loading is instant and costs almost no heap.
@@ -27,7 +27,18 @@ public final class Dict {
     }
 
     public char ch(int n) {
-        return b.getChar(HDR + n * REC);
+        return (char) (b.getChar(HDR + n * REC) & 0x7FFF);
+    }
+
+    /** The word ending at node [n] is confirmed by the spell checker (Magyar Ispell). */
+    public boolean verified(int n) {
+        return (b.getChar(HDR + n * REC) & 0x8000) != 0;
+    }
+
+    /** The word is in the list and confirmed by the spell checker. */
+    public boolean verified(CharSequence w) {
+        int n = node(w);
+        return n >= 0 && freq(n) > 0 && verified(n);
     }
 
     public int freq(int n) {

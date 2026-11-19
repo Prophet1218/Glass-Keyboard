@@ -252,12 +252,12 @@ class PopupOverlay(context: Context) : View(context) {
     private fun liquidVeil(t: GlassTheme): Int {
         val base = if (t.dark) 0x8C3A3B40.toInt() else 0x99FFFFFF.toInt()
         val a = (Color.alpha(base) * (0.25f + 1.45f * popupBlur)).toInt().coerceIn(0, 240)
-        return (base and 0x00FFFFFF) or (a shl 24)
+        return t.glassTint((base and 0x00FFFFFF) or (a shl 24))
     }
 
     private fun popupTint(t: GlassTheme, mat: Int = popupGlass): Int = when (mat) {
-        0 -> if (t.dark) 0x99595A60.toInt() else 0xB3FFFFFF.toInt()
-        1 -> if (t.dark) 0xA6505156.toInt() else 0xB8F5F6F9.toInt()
+        0 -> t.glassTint(if (t.dark) 0x99595A60.toInt() else 0xB3FFFFFF.toInt())
+        1 -> t.glassTint(if (t.dark) 0xA6505156.toInt() else 0xB8F5F6F9.toInt())
         else -> t.popup
     }
 
@@ -523,7 +523,7 @@ class PopupOverlay(context: Context) : View(context) {
                     // the letter balloon stays more opaque (the letter must be readable) but follows the slider too
                     val base = if (t.dark) 0xCC3A3B40.toInt() else 0xD9FFFFFF.toInt()
                     val a = (Color.alpha(base) * (0.55f + 0.9f * popupBlur)).toInt().coerceIn(0, 245)
-                    (base and 0x00FFFFFF) or (a shl 24)
+                    t.glassTint((base and 0x00FFFFFF) or (a shl 24))
                 }
                 paint.color = veil
                 paint.alpha = (Color.alpha(veil) * st[3]).toInt()

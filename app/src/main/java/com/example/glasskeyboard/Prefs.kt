@@ -66,7 +66,7 @@ class Prefs(context: Context) {
     /** background preset (GlassTheme.BACKGROUNDS): 0 glass, others solid colours */
     val background get() = sp.getInt(K_BG, 0)
     /** strip under the keys (gesture handle): 0 glass, 1 glass fading to solid, 2 solid */
-    val navStyle get() = sp.getInt(K_NAV_STYLE, 0)
+    val navStyle get() = 0
     val numberRow get() = b(K_NUMBER_ROW, true)
     val periodKey get() = b(K_PERIOD_KEY, true)
     val animations get() = b(K_ANIM, true)

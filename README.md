@@ -54,7 +54,9 @@ After every push GitHub Actions builds and publishes the new APK (`.github/workf
 
 Word frequencies come from the [wordfreq](https://github.com/rspeer/wordfreq) data and the
 [FrequencyWords](https://github.com/hermitdave/FrequencyWords) (OpenSubtitles) lists, both CC BY-SA 4.0.
-Hungarian: ~377,000 word forms, English: 160,000 words. Rebuild with `tools/build_dict.py`.
+The Hungarian list is checked against the **Magyar Ispell** Hunspell dictionary (LibreOffice
+`hu_HU`, MPL/GPL/LGPL): ~978,000 word forms, each confirmed form marked for autocorrect
+(see `tools/hunspell/README.md`). English: 160,000 words. Rebuild with `tools/build_dict.py`.
 
 ## Credits
 
