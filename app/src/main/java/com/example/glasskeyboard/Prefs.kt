@@ -54,7 +54,9 @@ class Prefs(context: Context) {
     val keyPreview get() = b(K_PREVIEW, true)
     val spaceCursor get() = b(K_SPACE_CURSOR, true)
     val sound get() = b(K_SOUND, false)
-    val showMic get() = b(K_MIC, true)
+    val showMic get() = false
+    /** background preset (GlassTheme.BACKGROUNDS): 0 glass, others solid colours */
+    val background get() = sp.getInt(K_BG, 0)
     /** strip under the keys (gesture handle): 0 glass, 1 glass fading to solid, 2 solid */
     val navStyle get() = sp.getInt(K_NAV_STYLE, 0)
     val numberRow get() = b(K_NUMBER_ROW, false)
@@ -147,6 +149,7 @@ class Prefs(context: Context) {
         const val K_MIC = "mic"
         const val K_NAV_STYLE = "nav_style3"
         const val K_UI_LANG = "ui_lang"
+        const val K_BG = "background"
         const val K_HAPTICS = "haptics"
         const val K_THEME = "theme"
         const val K_KEY_HEIGHT = "key_height"

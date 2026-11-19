@@ -28,9 +28,11 @@ After every push GitHub Actions builds and publishes the new APK (`.github/workf
   symbol, space bar trackpad (cursor movement), double space = period, double-tap shift for
   Caps Lock, smart quotes, auto-capitalisation.
 - **Emoji panel** with categories and recently used emoji; **GIF search**; **clipboard history**.
-- **Dictation** in the keyboard with the phone's speech recognizers (Google, offline).
 - **Liquid glass**, **frosted glass** or solid style; light / dark / clear / system tone; glass
   colour, blur, refraction, dispersion and opacity can all be adjusted.
+- **Backgrounds**: the glass sheet or one of 11 solid colours (black, graphite, greys, white,
+  midnight blue, forest green, burgundy, plum, sand), picked from previews.
+- Language switch: long press the emoji key.
 - Optional number row and period key, adjustable key and bottom strip height, animations,
   vibration, sound.
 - The app follows the phone's language (Hungarian, otherwise English).
@@ -45,7 +47,6 @@ After every push GitHub Actions builds and publishes the new APK (`.github/workf
 | `GlassKeyboardService.kt` | the keyboard service: text handling, corrections, shift, languages |
 | `KeyboardView.kt`, `GlassTheme.kt`, `LiquidLens.kt`, `Icons.kt`, `PopupOverlay.kt` | look and touch handling |
 | `CandidateBar.kt`, `EmojiView.kt`, `GifPanel.kt`, `ClipboardPanel.kt` | suggestion bar / toolbar and panels |
-| `Dictation.kt`, `MicPipe.kt` | dictation |
 | `SettingsActivity.kt`, `LiquidControls.kt`, `Ui.kt` | settings, liquid slider / switch, UI texts |
 | `tools/build_dict.py` | builds the dictionaries (`assets/hu.dict`, `assets/en.dict`) |
 

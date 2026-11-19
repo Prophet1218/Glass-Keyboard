@@ -73,35 +73,6 @@ class SettingsActivity : Activity() {
     }
 
     private var scroll: ScrollView? = null
-    private var testOut: TextView? = null
-    private var testDict: Dictation? = null
-
-    /** Runs dictation right here (in the foreground), to see whether the phone's recognizers work. */
-    private fun testDictation() {
-        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 7)
-            return
-        }
-        testDict?.let { if (it.active) { it.stop(); return } }
-        val d = Dictation(this, android.os.Handler(mainLooper), object : Dictation.Callbacks {
-            override fun status(text: String) { testOut?.text = text }
-            override fun partial(text: String) { testOut?.text = "🎤 $text" }
-            override fun result(text: String) { testOut?.text = "✅ $text" }
-            override fun end(message: String?) { if (message != null) testOut?.text = "❌ $message" }
-        })
-        testDict = d
-        try {
-            d.start(Ui.hu)
-        } catch (e: Throwable) {
-            DiagLog.add(this, "mic", "test crashed: $e")
-            testOut?.text = "❌ $e"
-        }
-    }
-
-    override fun onDestroy() {
-        testDict?.destroy()
-        super.onDestroy()
-    }
 
     override fun onPause() {
         super.onPause()
@@ -177,7 +148,7 @@ class SettingsActivity : Activity() {
                 recreate()
             }
         })
-        langs.addView(hint(T("Váltás: a földgömb gombbal a billentyűzet alatt. Hosszan nyomva: billentyűzetváltó.")))
+        langs.addView(hint(T("Váltás: az emoji gomb hosszú nyomásával.")))
 
         // ---- typing
         val typing = card(T("Gépelés"))
@@ -224,11 +195,11 @@ class SettingsActivity : Activity() {
 
         // ---- look & feel
         val look = card(T("Megjelenés és visszajelzés"))
+        look.addView(backgroundRow())
         look.addView(seekRow(T("Háttér átlátszatlansága"), Prefs.K_PANEL_OPACITY, 0, 100, 100, "%"))
         look.addView(choiceRow(T("Navigációs sáv (a billentyűzet alatt)"), arrayOf(T("Üveg – teljesen átlátszó"), T("Üveg, az alja fokozatosan tömör (eltakarja az alkalmazás sötét sávját)"), T("A billentyűzet színe – tömör")), Prefs.K_NAV_STYLE, 0))
         look.addView(seekRow(T("Gombok átlátszatlansága"), Prefs.K_KEY_OPACITY, 15, 100, 100, "%"))
         look.addView(seekRow(T("Billentyűmagasság"), Prefs.K_KEY_HEIGHT, 80, 130, 100, "%"))
-        look.addView(seekRow(T("Alsó sáv magassága (földgömb, mikrofon)"), Prefs.K_STRIP_HEIGHT, 28, 80, 46, " dp"))
         look.addView(switchRow(T("Animációk"), T("Felugró buborékok, rugalmas ékezetválasztó, áttűnések"), Prefs.K_ANIM, true))
         look.addView(choiceRow(T("Javaslatok animációja"), arrayOf(T("Áttűnés"), T("Felúszás"), T("Nagyítás"), T("Gördülés"), T("Nincs")), Prefs.K_SUGG_ANIM, 0))
         look.addView(choiceRow(T("Gombérintés effekt"), arrayOf(T("Kiemelkedés"), T("Benyomódás"), T("Fénylés"), T("Nincs")), Prefs.K_PRESS_ANIM, 0))
@@ -241,7 +212,6 @@ class SettingsActivity : Activity() {
         look.addView(switchRow(T("Billentyű-előnézet"), T("Felnagyított betű buborék gépeléskor"), Prefs.K_PREVIEW, true))
         look.addView(choiceRow(T("Rezgés"), arrayOf(T("Ki"), T("Enyhe"), T("Erős")), Prefs.K_HAPTICS, 1))
         look.addView(switchRow(T("Hang"), T("Kattanó hang gépeléskor"), Prefs.K_SOUND, false))
-        look.addView(switchRow(T("Mikrofon gomb"), T("Hangalapú bevitel (pl. Google hangbevitel) a billentyűzet alatt"), Prefs.K_MIC, true))
 
         // ---- GIF
         val gif = card("GIF")
@@ -268,10 +238,7 @@ class SettingsActivity : Activity() {
 
         // ---- diagnostics
         val diag = card(T("Hibakeresés"))
-        diag.addView(hint(T("Ha a diktálás vagy a navigációs sáv nem jól működik, itt látszik, mi történt. Készíts róla képernyőképet, vagy másold ki.")))
-        diag.addView(button(T("Diktálás próbája itt")) { testDictation() })
-        testOut = text("", 14f, textColor)
-        diag.addView(testOut)
+        diag.addView(hint(T("Ha valami nem jól működik, itt látszik, mi történt. Készíts róla képernyőképet, vagy másold ki.")))
         val log = text(DiagLog.text(this).ifEmpty { T("(üres)") }, 11f, softColor)
         log.typeface = Typeface.MONOSPACE
         log.setTextIsSelectable(true)
@@ -450,6 +417,102 @@ class SettingsActivity : Activity() {
         r.addView(sw)
         r.setOnClickListener { sw.toggle(); sw.postInvalidateOnAnimation() }
         return r
+    }
+
+    // ------------------------------------------------------------------ background picker
+
+    private fun bgName(i: Int): String = GlassTheme.BACKGROUNDS.getOrNull(i)?.let { if (Ui.hu) it.hu else it.en } ?: ""
+
+    /** "Background" row: a small picture of the current choice; tap → all choices with pictures. */
+    private fun backgroundRow(): View {
+        val r = row()
+        val sel = prefs.background
+        r.addView(labels(T("Háttér"), bgName(sel)))
+        r.addView(BgPreview(this, sel), LinearLayout.LayoutParams((72 * dp).toInt(), (48 * dp).toInt()))
+        r.setOnClickListener { pickBackground() }
+        return r
+    }
+
+    private fun pickBackground() {
+        val grid = android.widget.GridLayout(this)
+        grid.columnCount = 2
+        grid.setPadding((14 * dp).toInt(), (6 * dp).toInt(), (14 * dp).toInt(), (6 * dp).toInt())
+        var dlg: AlertDialog? = null
+        val cur = prefs.background
+        GlassTheme.BACKGROUNDS.indices.forEach { i ->
+            val cell = LinearLayout(this)
+            cell.orientation = LinearLayout.VERTICAL
+            cell.gravity = Gravity.CENTER_HORIZONTAL
+            cell.setPadding((6 * dp).toInt(), (6 * dp).toInt(), (6 * dp).toInt(), (8 * dp).toInt())
+            if (i == cur) cell.background = rounded(0x330A84FF, 16f, 0xFF0A84FF.toInt())
+            cell.addView(BgPreview(this, i), LinearLayout.LayoutParams((128 * dp).toInt(), (84 * dp).toInt()))
+            cell.addView(text(bgName(i), 13f, textColor).apply { gravity = Gravity.CENTER })
+            cell.setOnClickListener {
+                prefs.sp.edit().putInt(Prefs.K_BG, i).commit()
+                dlg?.dismiss()
+                recreate()
+            }
+            grid.addView(cell, android.widget.GridLayout.LayoutParams().apply {
+                width = 0
+                columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+            })
+        }
+        val sv = ScrollView(this)
+        sv.addView(grid)
+        dlg = dialog().setTitle(T("Háttér")).setView(sv).setNegativeButton(T("Mégse"), null).frosted()
+    }
+
+    /** A small picture of the keyboard with one background choice, drawn with the real theme. */
+    @android.annotation.SuppressLint("ViewConstructor")
+    inner class BgPreview(ctx: android.content.Context, private val preset: Int) : View(ctx) {
+        private val wall = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val clip = android.graphics.Path()
+        private val rr = android.graphics.RectF()
+
+        override fun onDraw(c: android.graphics.Canvas) {
+            val w = width.toFloat()
+            val h = height.toFloat()
+            val t = GlassTheme(context, prefs.theme, prefs.glassStyle, prefs.panelOpacity, prefs.keyOpacity, prefs.glass(), preset)
+            clip.reset()
+            rr.set(0f, 0f, w, h)
+            clip.addRoundRect(rr, 12 * dp, 12 * dp, android.graphics.Path.Direction.CW)
+            c.save()
+            c.clipPath(clip)
+            // a colourful "app" behind, so the glass choice shows that it is see-through
+            wall.shader = android.graphics.LinearGradient(0f, 0f, w, h, intArrayOf(0xFFFF7A59.toInt(), 0xFFB04BFF.toInt(), 0xFF2F80FF.toInt()), null, android.graphics.Shader.TileMode.CLAMP)
+            c.drawRect(rr, wall)
+            wall.shader = null
+            wall.color = 0x66FFFFFF
+            c.drawCircle(w * 0.25f, h * 0.35f, h * 0.22f, wall)
+            val top = h * 0.12f
+            t.drawPanel(c, 0f, top, w, h)
+            // keys: 10 / 9 / 7+2 / bottom row
+            val pad = w * 0.025f
+            val rowH = (h - top - pad) / 4f
+            val kh = rowH * 0.72f
+            val rad = kh * 0.22f
+            val counts = intArrayOf(10, 9, 9)
+            for (row in 0 until 3) {
+                val n = counts[row]
+                val kw = (w - pad * 2) / 10f
+                val start = pad + (10 - n) * kw / 2f
+                val y = top + pad + row * rowH
+                for (k in 0 until n) {
+                    val special = row == 2 && (k == 0 || k == n - 1)
+                    rr.set(start + k * kw + kw * 0.1f, y, start + (k + 1) * kw - kw * 0.1f, y + kh)
+                    t.drawKey(c, rr, if (special) t.keySpecial else t.key, rad)
+                }
+            }
+            val y = top + pad + 3 * rowH
+            val kw = (w - pad * 2) / 10f
+            rr.set(pad + kw * 0.1f, y, pad + kw * 2.4f, y + kh)
+            t.drawKey(c, rr, t.keySpecial, rad)
+            rr.set(pad + kw * 2.6f, y, pad + kw * 7.4f, y + kh)
+            t.drawKey(c, rr, t.key, rad)
+            rr.set(pad + kw * 7.6f, y, w - pad - kw * 0.1f, y + kh)
+            t.drawKey(c, rr, t.keySpecial, rad)
+            c.restore()
+        }
     }
 
     private fun choiceRowThen(title: String, options: Array<String>, key: String, def: Int, then: () -> Unit): View {

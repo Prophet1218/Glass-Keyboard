@@ -83,8 +83,8 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
             field = v
             invalidate()
         }
-    var showGlobe = true
-    var showMic = true
+    var showGlobe = false
+    var showMic = false
     /** dictation running: the mic glows */
     var micActive = false
         set(v) {
@@ -529,6 +529,12 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
                 p.longPressed = true
                 actions.onGlobeLong()
             }
+            // long press on the emoji key switches the language (there is no globe key)
+            KeyType.EMOJI -> schedule(p, 450) {
+                p.longPressed = true
+                performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                actions.onGlobe()
+            }
             else -> {}
         }
         invalidate()
@@ -630,6 +636,7 @@ class KeyboardView(context: Context, private val actions: KeyboardActions, priva
                 if (typedDuringShift) actions.onShiftChordEnd()
             }
             KeyType.GLOBE -> if (!p.longPressed) actions.onGlobe()
+            KeyType.EMOJI -> if (!p.longPressed) actions.onEmoji()
             KeyType.TO_SYMBOLS, KeyType.TO_LETTERS, KeyType.TO_MORE -> {}
             else -> fire(key)
         }

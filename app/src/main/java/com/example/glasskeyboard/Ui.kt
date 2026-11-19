@@ -18,6 +18,7 @@ object Ui {
     fun t(huText: String): String = if (hu) huText else EN[huText] ?: huText
 
     private val EN = hashMapOf(
+        "Háttér" to "Background",
         "Az alkalmazás nyelve" to "App language",
         "A telefon nyelve" to "Phone language",
         "Navigációs sáv (a billentyűzet alatt)" to "Navigation bar area (below the keyboard)",
@@ -25,7 +26,7 @@ object Ui {
         "Üveg, az alja fokozatosan tömör (eltakarja az alkalmazás sötét sávját)" to "Glass fading to solid at the bottom (hides the app's dark bar)",
         "A billentyűzet színe – tömör" to "Keyboard color – solid",
         "Hibakeresés" to "Diagnostics",
-        "Ha a diktálás vagy a navigációs sáv nem jól működik, itt látszik, mi történt. Készíts róla képernyőképet, vagy másold ki." to "If dictation or the navigation bar area does not work well, this shows what happened. Take a screenshot or copy it.",
+        "Ha valami nem jól működik, itt látszik, mi történt. Készíts róla képernyőképet, vagy másold ki." to "If something does not work well, this shows what happened. Take a screenshot or copy it.",
         "Diktálás próbája itt" to "Test dictation here",
         "(üres)" to "(empty)",
         "Napló frissítése" to "Refresh log",
@@ -39,7 +40,7 @@ object Ui {
         "Nyelvek" to "Languages",
         "Magyar" to "Hungarian",
         "QWERTZ kiosztás, magyar szótár és javítás" to "QWERTZ layout, Hungarian dictionary and autocorrect",
-        "Váltás: a földgömb gombbal a billentyűzet alatt. Hosszan nyomva: billentyűzetváltó." to "Switch with the globe key below the keyboard. Long press: keyboard picker.",
+        "Váltás: az emoji gomb hosszú nyomásával." to "Switch: long press the emoji key.",
         "Gépelés" to "Typing",
         "Automatikus javítás" to "Autocorrect",
         "Elgépelések és hiányzó ékezetek javítása szóköznél (jo → jó, koszonom → köszönöm). Visszatörléssel visszavonható." to "Fixes typos and missing accents on space (teh → the, jo → jó). Backspace undoes it.",

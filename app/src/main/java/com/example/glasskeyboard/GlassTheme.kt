@@ -26,11 +26,16 @@ import java.util.Random
 class GlassTheme(
     context: Context, prefTheme: Int, val style: Int = 0, panelOpacity: Int = 100, keyOpacity: Int = 100,
     val params: GlassParams = GlassParams(),
+    /** background preset: 0 = the glass sheet, otherwise a solid colour from [BACKGROUNDS] */
+    val bg: Int = 0,
 ) {
+    /** the solid background colour of the preset, or 0 for glass */
+    val bgColor: Int = BACKGROUNDS.getOrNull(bg)?.color ?: 0
+    val solidBg = bgColor != 0
     /** "clear" tone: very see-through sheet and keys */
     val clear = prefTheme == 3
     /** 0..1 opacity of the keyboard sheet and of the keys (settings). */
-    val panelAlpha = (panelOpacity / 100f).coerceIn(0f, 1f) * (if (clear) 0.22f else 1f)
+    val panelAlpha = if (solidBg) 1f else (panelOpacity / 100f).coerceIn(0f, 1f) * (if (clear) 0.22f else 1f)
     val keyAlpha = (keyOpacity / 100f).coerceIn(0f, 1f) * (if (clear) 0.6f else 1f)
     /** glass switched off: plain solid surfaces */
     val solid = style == 2
@@ -48,7 +53,7 @@ class GlassTheme(
     val dp = context.resources.displayMetrics.density
     val sp = dp * context.resources.configuration.fontScale
 
-    val dark: Boolean = when (prefTheme) {
+    val dark: Boolean = if (solidBg) luminance(bgColor) < 0.45f else when (prefTheme) {
         1 -> false
         2 -> true
         else -> (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
@@ -89,7 +94,27 @@ class GlassTheme(
                 popup = 0xFFFFFFFF.toInt()
             }
         }
-        panelTop = fx(panelTop); panelBottom = fx(panelBottom)
+        if (solidBg) {
+            // solid background: the sheet in the chosen colour, keys a shade lighter (dark
+            // colours) or white (light colours), function keys in between
+            val b = bgColor or 0xFF000000.toInt()
+            panelTop = mixRgb(b, if (dark) Color.WHITE else Color.WHITE, if (dark) 0.035f else 0.25f) or 0xFF000000.toInt()
+            panelBottom = b
+            if (dark) {
+                key = mixRgb(b, Color.WHITE, 0.24f) or 0xFF000000.toInt()
+                keySpecial = mixRgb(b, Color.WHITE, 0.11f) or 0xFF000000.toInt()
+                popup = mixRgb(b, Color.WHITE, 0.32f) or 0xFF000000.toInt()
+            } else {
+                key = mixRgb(b, Color.WHITE, 0.82f) or 0xFF000000.toInt()
+                keySpecial = mixRgb(b, Color.BLACK, 0.13f) or 0xFF000000.toInt()
+                popup = Color.WHITE
+            }
+            keyPressed = keySpecial
+            keySpecialPressed = key
+        }
+        if (!solidBg) {
+            panelTop = fx(panelTop); panelBottom = fx(panelBottom)
+        }
         key = kfx(fx(key)); keySpecial = kfx(fx(keySpecial)); keyPressed = kfx(fx(keyPressed)); keySpecialPressed = kfx(fx(keySpecialPressed))
         popup = fx(popup)
         panelTop = withAlpha(panelTop, panelAlpha)
@@ -305,17 +330,45 @@ class GlassTheme(
             c.drawPath(path, grainPaint)
         }
         if (!params.rim) return
+        // the light arc along the top edge fades out as it turns down at the corners, instead
+        // of ending in a hard cut where it was clipped
         c.save()
-        c.clipRect(left, top, right, top + r)
+        c.clipRect(left, top, right, top + r * 1.6f)
         tmp.set(left + 0.5f * dp, top + 0.5f * dp, right - 0.5f * dp, bottom + r)
-        rimPaint.color = panelRim
+        rimPaint.color = Color.WHITE
         rimPaint.strokeWidth = 1f * dp
+        rimPaint.shader = LinearGradient(
+            0f, top, 0f, top + r * 1.5f,
+            intArrayOf(panelRim, withAlpha(panelRim, 0.45f), panelRim and 0x00FFFFFF),
+            floatArrayOf(0f, 0.3f, 1f), Shader.TileMode.CLAMP
+        )
         c.drawRoundRect(tmp, r, r, rimPaint)
+        rimPaint.shader = null
         rimPaint.strokeWidth = (if (liquid) 1.2f else 1f) * dp
         c.restore()
     }
 
     companion object {
+        class Background(val hu: String, val en: String, val color: Int)
+
+        /** Background presets: the glass sheet and solid colours. */
+        val BACKGROUNDS = listOf(
+            Background("Üveg (átlátszó)", "Glass (see-through)", 0),
+            Background("Fekete", "Black", 0xFF000000.toInt()),
+            Background("Grafit", "Graphite", 0xFF1C1C1E.toInt()),
+            Background("Sötétszürke", "Dark grey", 0xFF2C2D31.toInt()),
+            Background("Palaszürke", "Slate", 0xFF3E434C.toInt()),
+            Background("Világosszürke", "Light grey", 0xFFD3D6DD.toInt()),
+            Background("Fehér", "White", 0xFFF6F6F8.toInt()),
+            Background("Éjkék", "Midnight blue", 0xFF101B33.toInt()),
+            Background("Erdőzöld", "Forest green", 0xFF12271D.toInt()),
+            Background("Bordó", "Burgundy", 0xFF2C1016.toInt()),
+            Background("Szilva", "Plum", 0xFF231732.toInt()),
+            Background("Homok", "Sand", 0xFFE8E0D0.toInt()),
+        )
+
+        fun luminance(c: Int): Float = (0.2126f * Color.red(c) + 0.7152f * Color.green(c) + 0.0722f * Color.blue(c)) / 255f
+
         /** Fine random grain for the frosted material (generated once). */
         val grain: Bitmap by lazy {
             val n = 96

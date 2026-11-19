@@ -263,7 +263,6 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         audio = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         clips = ClipStore(prefs)
-        VoiceActivity.listener = { main.postDelayed({ takeVoiceResult() }, 400) }
         // remember what gets copied (the active keyboard is allowed to read the clipboard)
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
         if (cm != null) {
@@ -283,7 +282,6 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     override fun onDestroy() {
         clipListener?.let { (getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)?.removePrimaryClipChangedListener(it) }
-        dictation.destroy()
         saveDicts()
         worker.shutdown()
         super.onDestroy()
@@ -415,7 +413,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private fun applyTheme() {
-        val t = GlassTheme(this, prefs.theme, prefs.glassStyle, prefs.panelOpacity, prefs.keyOpacity, prefs.glass())
+        val t = GlassTheme(this, prefs.theme, prefs.glassStyle, prefs.panelOpacity, prefs.keyOpacity, prefs.glass(), prefs.background)
         theme = t
         if (root == null) return
         root?.theme = t
@@ -606,8 +604,6 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val langs = enabledLangs()
         if (lang !in langs) lang = langs[0]
         applyTheme()
-        if (VoiceActivity.pending != null) main.postDelayed({ takeVoiceResult() }, 250)
-        if (prefs.showMic) main.postDelayed({ dictation.warmUp(hu) }, 600)
 
         val type = info.inputType
         val cls = type and InputType.TYPE_MASK_CLASS
@@ -636,8 +632,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
                 variation != InputType.TYPE_TEXT_VARIATION_FILTER
 
         configureEnter(info)
-        kb.showGlobe = true
-        kb.showMic = prefs.showMic
+        kb.showGlobe = false
+        kb.showMic = false
         kb.previews = prefs.keyPreview
         kb.spaceCursor = prefs.spaceCursor
         kb.heightScale = prefs.keyHeight / 100f
@@ -1014,10 +1010,6 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
     }
 
     private fun pickCandidate(c: Candidate) {
-        if (listening) {
-            dictation.stop()
-            return
-        }
         val ic = currentInputConnection ?: return
         val before = textBefore()
         val word = extractWord(before)
@@ -1310,10 +1302,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     override fun onGlobe() {
         val langs = enabledLangs()
-        if (langs.size < 2) {
-            onEmoji()
-            return
-        }
+        if (langs.size < 2) return
         lang = langs[(langs.indexOf(lang) + 1) % langs.size]
         prefs.language = lang
         kb.locale = engine().locale
@@ -1332,101 +1321,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
     }
 
-    // ------------------------------------------------------------------ dictation
+    override fun onMic() {}
 
-    private val dictation: Dictation by lazy {
-        Dictation(this, main, object : Dictation.Callbacks {
-            override fun status(text: String) = showDictation(text)
-            override fun partial(text: String) = showDictation("🎤 $text")
-            override fun result(text: String) = insertDictated(text)
-            override fun end(message: String?) {
-                if (message == null) {
-                    stopDictation()
-                    return
-                }
-                if (::kb.isInitialized) kb.micActive = false
-                Toast.makeText(this@GlassKeyboardService, message, Toast.LENGTH_LONG).show()
-                // also in the suggestion bar for a few seconds (a toast may be hidden by the phone)
-                if (::bar.isInitialized) {
-                    bar.set(listOf(null, Candidate("", message), null))
-                    main.postDelayed({ if (!listening) stopDictation() }, 4000)
-                }
-            }
-        })
-    }
-    private val listening: Boolean get() = dictation.active
-
-    override fun onMic() {
-        endGifSearch()
-        if (dictation.active) {
-            dictation.stop()
-            return
-        }
-        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            // a keyboard cannot ask for permissions itself: a tiny screen asks once
-            DiagLog.add(this, "mic", "no RECORD_AUDIO permission: asking")
-            try {
-                startActivity(android.content.Intent(this, MicPermissionActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-            } catch (e: Exception) {
-                Toast.makeText(this, if (hu) "Engedélyezd a mikrofont a Glass Keyboard beállításaiban." else "Allow the microphone for Glass Keyboard in the app settings.", Toast.LENGTH_LONG).show()
-            }
-            return
-        }
-        kb.micActive = true
-        dictation.start(hu)
-    }
-
-    /** Text from the voice input screen (old fallback): typed as soon as the field is back. */
-    private fun takeVoiceResult() {
-        if (currentInputConnection == null) return
-        val text = VoiceActivity.take() ?: return
-        insertDictated(text)
-    }
-
-    private fun showDictation(text: String) {
-        if (listening) bar.set(listOf(null, Candidate("", text), null))
-    }
-
-    private fun stopDictation() {
-        if (::kb.isInitialized) kb.micActive = false
-        if (::bar.isInitialized) bar.clear()
-        scheduleRefresh()
-    }
-
-    /** Puts the dictated text in with sensible spacing and a capital at sentence start. */
-    private fun insertDictated(raw: String) {
-        val ic = currentInputConnection ?: return
-        val before = textBefore(32)
-        var text = raw.trim()
-        if (sentenceStart(before) && capsAllowed) text = text.substring(0, 1).uppercase(engine().locale) + text.substring(1)
-        val space = if (before.isNotEmpty() && !before.last().isWhitespace()) " " else ""
-        ic.commitText(space + text + " ", 1)
-        lastCorrection = null
-        afterInput()
-    }
-
-    override fun onFinishInput() {
-        if (listening) dictation.cancel()
-        super.onFinishInput()
-    }
-
-    private fun switchToVoiceIme(): Boolean {
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        for (imi in imm.enabledInputMethodList) {
-            if (imi.packageName == packageName) continue
-            for (st in imm.getEnabledInputMethodSubtypeList(imi, true)) {
-                if (st.mode == "voice") {
-                    if (Build.VERSION.SDK_INT >= 28) switchInputMethod(imi.id, st)
-                    else {
-                        @Suppress("DEPRECATION")
-                        window?.window?.attributes?.token?.let { imm.setInputMethodAndSubtype(it, imi.id, st) }
-                    }
-                    return true
-                }
-            }
-        }
-        return false
-    }
 
     override fun onCursor(dx: Int, dy: Int) {
         val ic = currentInputConnection ?: return

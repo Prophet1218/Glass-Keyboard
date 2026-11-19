@@ -1,5 +1,5 @@
-## Glass Keyboard 0.0.18
+## Glass Keyboard 0.0.19
 
-- **Settings crash fixed:** every pop-up menu (language, navigation bar, glass options…) crashed – the frosted blur was set before the dialog's window existed
-- **Dictation:** the log showed that *Speech Services by Google* starts but receives only silence, and that no recognizer accepts the keyboard's own recording (instant client error). The cause is that the phone treats the keyboard as a background app and does not let its recognizer use the microphone. Now, while dictating, a foreground service of type *microphone* runs (a small notification) so the app may use the microphone; if the recognizer still gets silence, an invisible screen of the app is opened and the same recognizer is tried again. Pointless retries after "client error" were removed
-- **Navigation bar area:** back to fully see-through by default (the fading option stays in the settings)
+- **Dictation removed** together with the microphone and globe icons below the keyboard (and the microphone permission). The language is switched by a long press on the emoji key
+- **Backgrounds:** new setting with previews – the glass sheet or 11 solid colours (black, graphite, dark grey, slate, light grey, white, midnight blue, forest green, burgundy, plum, sand). With a solid background the area under the gesture handle is the same colour too
+- **Top light arc** of the keyboard fades out at the corners instead of ending in a hard cut

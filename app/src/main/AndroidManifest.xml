@@ -2,17 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- only for the GIF search (KLIPY); typing never goes online -->
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <queries>
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
-        </intent>
-    </queries>
 
     <application
         android:allowBackup="true"
@@ -31,33 +22,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".MicPermissionActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:noHistory="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
-
-        <service
-            android:name=".MicFgService"
-            android:exported="false"
-            android:foregroundServiceType="microphone" />
-
-        <activity
-            android:name=".MicBoostActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:noHistory="false"
-            android:taskAffinity="com.example.glasskeyboard.micboost"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
-
-        <activity
-            android:name=".VoiceActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:taskAffinity=""
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <provider
             android:name=".GifProvider"
