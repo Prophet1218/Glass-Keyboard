@@ -290,7 +290,9 @@ class SettingsActivity : Activity() {
         l.addView(text(subtitle, 13f, softColor))
         head.addView(l, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         val chev = text("›", 26f, softColor)
-        head.addView(chev)
+        chev.gravity = Gravity.CENTER
+        // wrap the chevron only: with the default full width it squeezed the title to nothing
+        head.addView(chev, LinearLayout.LayoutParams((28 * dp).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT))
         c.addView(head)
         val body = LinearLayout(this)
         body.orientation = LinearLayout.VERTICAL
