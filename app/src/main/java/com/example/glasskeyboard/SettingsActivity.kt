@@ -225,7 +225,7 @@ class SettingsActivity : Activity() {
         // ---- look & feel
         val look = card(T("Megjelenés és visszajelzés"))
         look.addView(seekRow(T("Háttér átlátszatlansága"), Prefs.K_PANEL_OPACITY, 0, 100, 100, "%"))
-        look.addView(choiceRow(T("Navigációs sáv (a billentyűzet alatt)"), arrayOf(T("Üveg – teljesen átlátszó"), T("Üveg, az alja fokozatosan tömör (eltakarja az alkalmazás sötét sávját)"), T("A billentyűzet színe – tömör")), Prefs.K_NAV_STYLE, 1))
+        look.addView(choiceRow(T("Navigációs sáv (a billentyűzet alatt)"), arrayOf(T("Üveg – teljesen átlátszó"), T("Üveg, az alja fokozatosan tömör (eltakarja az alkalmazás sötét sávját)"), T("A billentyűzet színe – tömör")), Prefs.K_NAV_STYLE, 0))
         look.addView(seekRow(T("Gombok átlátszatlansága"), Prefs.K_KEY_OPACITY, 15, 100, 100, "%"))
         look.addView(seekRow(T("Billentyűmagasság"), Prefs.K_KEY_HEIGHT, 80, 130, 100, "%"))
         look.addView(seekRow(T("Alsó sáv magassága (földgömb, mikrofon)"), Prefs.K_STRIP_HEIGHT, 28, 80, 46, " dp"))
@@ -361,10 +361,14 @@ class SettingsActivity : Activity() {
             if (android.os.Build.VERSION.SDK_INT >= 31) {
                 w.addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
                 w.attributes = w.attributes.also { it.blurBehindRadius = (18 * dp).toInt() }
-                w.setBackgroundBlurRadius((36 * dp).toInt())
             }
         }
         d.show()
+        // the dialog's own frosted backdrop: only once its window exists (it crashed before show)
+        if (android.os.Build.VERSION.SDK_INT >= 31) try {
+            d.window?.setBackgroundBlurRadius((36 * dp).toInt())
+        } catch (_: Exception) {
+        }
         return d
     }
 

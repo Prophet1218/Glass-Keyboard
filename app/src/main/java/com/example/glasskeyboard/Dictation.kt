@@ -106,8 +106,8 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
         // a recognizer in another app recording by itself often gets only silence (log: rms
         // stays at -2): first feed it the keyboard's own recording, then let it record itself
         for (n in names) {
-            if (self) out += Way(n, true)
             out += Way(n, false)
+            if (self) out += Way(n, true)
         }
         if (onDeviceAvailable()) {
             if (self) out += Way(onDevice, true)
@@ -180,7 +180,11 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
         boosted = false
         active = true
         log("start (${if (hu) "hu" else "en"}), ways: " + ways.joinToString { name(it.comp) + if (it.selfAudio) "+mic" else "" })
-        next(0)
+        // lets the app use the microphone while dictating (the recognizer records for us)
+        if (Build.VERSION.SDK_INT >= 29) {
+            MicFgService.start(ctx)
+            next(350)
+        } else next(0)
     }
 
     /** The user tapped the mic again: finish listening (the result still arrives). */
@@ -222,6 +226,7 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
 
     private fun finish(message: String?, silent: Boolean = false) {
         if (boosted) MicBoostActivity.release()
+        MicFgService.stop(ctx)
         active = false
         listening = false
         attempt++
@@ -234,6 +239,28 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
         val a = ++attempt
         listening = false
         main.postDelayed({ if (active && a == attempt) run() }, delay)
+    }
+
+    /**
+     * The recognizer listens but gets only silence: the phone does not let the app use the
+     * microphone. Once per dictation an invisible screen of the app is opened (foreground app)
+     * and the same recognizer is tried again.
+     */
+    private fun silence(reason: String) {
+        if (!boosted && !stopped && MicBoostActivity.start(ctx)) {
+            boosted = true
+            log("silence ($reason): foreground boost, same way again")
+            mic.stop()
+            try {
+                rec?.cancel()
+            } catch (_: Exception) {
+            }
+            recWarm = false
+            retries = 0
+            next(700)
+            return
+        }
+        giveUp(reason)
     }
 
     private fun giveUp(reason: String, sameAgain: Boolean = false) {
@@ -343,7 +370,8 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
                         val gotSound = if (w.selfAudio) mic.peak in 40..2500 else maxRms > 0f
                         if (gotWords || (gotSound && ms > 1500)) {
                             finish(if (hu) "Nem hallottam semmit – próbáld újra." else "Didn't catch that – try again.")
-                        } else giveUp(if (w.selfAudio && mic.peak > 2500) (if (hu) "nem fogadja a hangot" else "ignores the audio") else (if (hu) "csak csendet kap" else "gets only silence"))
+                        } else if (w.selfAudio && mic.peak > 2500) giveUp(if (hu) "nem fogadja a hangot" else "ignores the audio")
+                        else silence(if (hu) "csak csendet kap" else "gets only silence")
                     }
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> giveUp(if (hu) "nincs mikrofon-engedély" else "no microphone permission")
                     12, 13 -> {
@@ -362,7 +390,8 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
                         } else giveUp(errorText(error))
                     }
                     else -> {
-                        val transient = error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || error == SpeechRecognizer.ERROR_CLIENT ||
+                        // "client error" right away = this recognizer cannot do it (no point retrying)
+                        val transient = error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
                             error == 11 || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT || error == SpeechRecognizer.ERROR_SERVER ||
                             error == SpeechRecognizer.ERROR_NETWORK
                         giveUp(errorText(error), sameAgain = transient)
@@ -441,7 +470,7 @@ class Dictation(private val ctx: Context, private val main: Handler, private val
                     mic.peak > 4000 -> giveUp(if (hu) "nem fogadja a hangot" else "ignores the audio")
                 }
             } else if (maxRms <= 0f && recWarm) {
-                giveUp(if (hu) "csak csendet kap" else "gets only silence")
+                silence(if (hu) "csak csendet kap" else "gets only silence")
             }
         }, 2800)
     }
