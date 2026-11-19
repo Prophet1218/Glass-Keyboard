@@ -989,6 +989,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         }
         val allow = correctionAllowed(word, beforeWord)
         worker.execute {
+            // typing fast: a newer letter already queued its own analysis, skip this one
+            if (seq != analyzeSeq) return@execute
             val r = try {
                 eng.analyze(word, prev, allow)
             } catch (_: Exception) {
@@ -1069,19 +1071,50 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val word = extractWord(before)
         val beforeWord = before.substring(0, before.length - word.length)
         val prev = prevWord(beforeWord)
-        var corrected: String? = null
-        if (word.isNotEmpty() && correctionActive) {
-            val allow = correctionAllowed(word, beforeWord)
-            val c = cached
-            val r = if (c != null && c.word == word && c.prev == prev && c.allow == allow) c.result
-            else try {
-                engine().analyze(word, prev, allow)
+        if (word.isEmpty() || !correctionActive) {
+            finishCommit(ic, word, prev, null, sep)
+            return
+        }
+        val allow = correctionAllowed(word, beforeWord)
+        val c = cached
+        if (c != null && c.word == word && c.prev == prev && c.allow == allow) {
+            // the analysis of the word is ready: correct at once
+            val cor = c.result.correction
+            finishCommit(ic, word, prev, if (allow && cor != null && cor != word) cor else null, sep)
+            return
+        }
+        // Not analysed yet (fast typing): the separator goes in right away, so the keyboard never
+        // waits; the word is checked in the background and swapped a moment later if it is still
+        // there, unchanged, right before the cursor.
+        finishCommit(ic, word, prev, null, sep, learn = false)
+        val eng = engine()
+        val seq = ++analyzeSeq
+        worker.execute {
+            val r = try {
+                eng.analyze(word, prev, allow)
             } catch (_: Exception) {
                 null
             }
             val cor = r?.correction
-            if (allow && cor != null && cor != word) corrected = cor
+            val corrected = if (allow && cor != null && cor != word) cor else null
+            main.post {
+                val ic2 = currentInputConnection
+                if (corrected != null && ic2 != null && textBefore(word.length + sep.length + 1).let { tb ->
+                        tb.endsWith(word + sep) && (tb.length == word.length + sep.length || !tb[tb.length - word.length - sep.length - 1].isLetterOrDigit())
+                    }) {
+                    ic2.beginBatchEdit()
+                    ic2.deleteSurroundingText(word.length + sep.length, 0)
+                    ic2.commitText(corrected + sep, 1)
+                    ic2.endBatchEdit()
+                    lastCorrection = Correction(word, corrected, sep)
+                    learnCommitted(word, prev, corrected)
+                    if (seq == analyzeSeq) updateSuggestions()
+                } else learnCommitted(word, prev, null)
+            }
         }
+    }
+
+    private fun finishCommit(ic: android.view.inputmethod.InputConnection, word: String, prev: String?, corrected: String?, sep: String, learn: Boolean = true) {
         ic.beginBatchEdit()
         if (corrected != null) {
             ic.deleteSurroundingText(word.length, 0)
@@ -1092,22 +1125,26 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             lastCorrection = null
         }
         ic.endBatchEdit()
-        if (word.isNotEmpty() && learning && suggestionsActive) {
-            val eng = engine()
-            val loc = eng.locale
-            val final = corrected ?: word
-            worker.execute {
-                val parts = final.split(' ')
-                var p = prev
-                for (part in parts) {
-                    val lw = part.lowercase(loc)
-                    eng.learn(p, lw, corrected != null)
-                    p = lw
-                }
-            }
-            scheduleSave()
-        }
+        if (learn && word.isNotEmpty()) learnCommitted(word, prev, corrected)
         cached = null
+    }
+
+    /** Teaches the engine what was finally written (in the background). */
+    private fun learnCommitted(word: String, prev: String?, corrected: String?) {
+        if (!learning || !suggestionsActive) return
+        val eng = engine()
+        val loc = eng.locale
+        val final = corrected ?: word
+        worker.execute {
+            val parts = final.split(' ')
+            var p = prev
+            for (part in parts) {
+                val lw = part.lowercase(loc)
+                eng.learn(p, lw, corrected != null)
+                p = lw
+            }
+        }
+        scheduleSave()
     }
 
     private fun isSeparator(c: Char) = c in " .,!?;:)]}\"”»…\n"

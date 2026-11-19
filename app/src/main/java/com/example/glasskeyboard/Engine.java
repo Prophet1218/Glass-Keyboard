@@ -178,7 +178,18 @@ public final class Engine {
     private HashMap<String, Cand> found;
     private ArrayList<Object[]> prefixNodes;
 
+    /** Time budget of one analysis: the search stops there and uses what it found (most common first). */
+    private long deadline = Long.MAX_VALUE;
+    private boolean timeUp;
+    private int tick;
+    static final long BUDGET_NS = 80_000_000L;
+
     private void dfs(int node, int depth, char pd) {
+        if (timeUp) return;
+        if ((++tick & 127) == 0 && System.nanoTime() > deadline) {
+            timeUp = true;
+            return;
+        }
         int f = dict.first(node), e = f + dict.count(node);
         double[] prev = rows[depth];
         double[] cur = rows[depth + 1];
@@ -649,6 +660,17 @@ public final class Engine {
      * @param allowCorrection  false in fields where autocorrect makes no sense or for names
      */
     public synchronized Result analyze(String typed, String prev, boolean allowCorrection) {
+        deadline = System.nanoTime() + BUDGET_NS;
+        timeUp = false;
+        try {
+            return analyzeTimed(typed, prev, allowCorrection);
+        } finally {
+            deadline = Long.MAX_VALUE;
+            timeUp = false;
+        }
+    }
+
+    private Result analyzeTimed(String typed, String prev, boolean allowCorrection) {
         Result r = new Result();
         if (typed.isEmpty()) return r;
         String lower = typed.toLowerCase(locale).replace('’', '\'');
@@ -844,10 +866,10 @@ public final class Engine {
     // ---------------------------------------------------------------- aggressiveness
 
     /** 0 = careful … 1 = bold; 0.5 is the default behaviour. */
-    private double aggr = 0.5;
+    private volatile double aggr = 0.5;
 
     /** How readily typos are corrected (setting, 0–100). */
-    public synchronized void setAggressiveness(int percent) {
+    public void setAggressiveness(int percent) {
         aggr = Math.max(0, Math.min(100, percent)) / 100.0;
     }
 
