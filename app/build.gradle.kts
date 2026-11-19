@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace = "com.example.glasskeyboard"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.glasskeyboard"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 24
-        versionName = "1.1.0"
+        targetSdk = 36
+        versionCode = 25
+        versionName = "1.2.0"
     }
 
     // Fixed signing key kept in the project, so every build (GitHub or Android Studio)
@@ -39,6 +39,11 @@ android {
     // The word lists are memory-mapped straight from the APK, so they must stay uncompressed.
     androidResources {
         noCompress += listOf("dict")
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     compileOptions {

@@ -1,6 +1,5 @@
-## Glass Keyboard 1.1.0
+## Glass Keyboard 1.2.0
 
-- **Much bigger Hungarian dictionary:** ~978,000 word forms (was ~377,000), every form checked against the Magyar Ispell (Hunspell hu_HU) spell checker. Rare but real inflected and compound forms are now known, accent-less and other misspellings from the subtitle corpus are gone, and confirmed words are marked so autocorrect leaves them alone
-- **Better autocorrect:** on an automatic test of 1,500 real words and 1,485 typos, wrongly changed real words dropped from 2.7% to 0.1% (compound verbs like *felmondtam*, *átgondolom* are no longer split, *hízott*, *éberek*, *szerezne* are no longer "fixed"), and fixed typos rose from 82.9% to 86.4% (e.g. *országnk* → *országnak*, *kinitjuk* → *kinyitjuk*)
-- **Glass colour, colour strength and darkening** now also tint the toolbar icons and buttons, the key preview, the accent picker and the selection capsule
-- The "keyboard bottom edge" option was removed
+- **Targets Android 16 (SDK 36)** instead of Android 14, like WM Keyboard. From Android 15 the system treats older apps differently around the system bars; this may be what kept the area under the gesture handle black behind the see-through keyboard
+- The **keyboard bottom edge (navigation bar)** option is back under Background and colors: fully see-through glass, glass fading to solid, or solid keyboard colour
+- Build tools updated (Android Gradle Plugin 8.11, Gradle 8.13)

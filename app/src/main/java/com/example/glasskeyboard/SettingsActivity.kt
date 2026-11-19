@@ -184,6 +184,7 @@ class SettingsActivity : Activity() {
         colors.addView(choiceRow(T("Világos vagy sötét"), arrayOf(T("Rendszer szerint (világos / sötét)"), T("Világos"), T("Sötét"), T("Átlátszó")), Prefs.K_THEME, 0))
         colors.addView(seekRow(T("Háttér átlátszatlansága (üveg háttérnél)"), Prefs.K_PANEL_OPACITY, 0, 100, 100, "%"))
         colors.addView(seekRow(T("Gombok átlátszatlansága"), Prefs.K_KEY_OPACITY, 15, 100, 65, "%"))
+        colors.addView(choiceRow(T("A billentyűzet alja (navigációs sáv)"), arrayOf(T("Üveg – teljesen átlátszó"), T("Üveg, az alja fokozatosan tömör (eltakarja az alkalmazás sötét sávját)"), T("A billentyűzet színe – tömör")), Prefs.K_NAV_STYLE, 0))
         colors.addView(hueRow(T("Üveg színe"), Prefs.K_HUE, 210))
         colors.addView(seekRow(T("Szín erőssége (0 = színtelen üveg)"), Prefs.K_HUE_STRENGTH, 0, 70, 0, ""))
         colors.addView(seekRow(T("Üveg sötétítése"), Prefs.K_GLASS_DARK, 0, 80, 0, ""))
