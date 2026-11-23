@@ -1,5 +1,6 @@
-## Glass Keyboard 1.3.2
+## Glass Keyboard 1.3.3
 
-- **No more stutter when autocorrect fires during fast typing.** Space and punctuation are committed instantly; if the word wasn't analysed yet, it is checked in the background and swapped a moment later (only if it is still unchanged before the cursor)
-- Outdated suggestion lookups are skipped while you type, so the engine never falls behind
-- The correction search has a hard time budget, so even unusual long words can't block it
+- **Autocorrect now works in every app.** Fields that apps mark as "no suggestions" or "filter" (chats, social apps, search boxes, many WebView/Flutter/React Native apps) are corrected too – only password and e-mail address fields are left alone
+- **Browser address bars:** search queries are corrected when you press space; web addresses (anything with `.`, `/`, `:` or `@`) are never touched
+- Apps that report their text a little late no longer miss the correction (short retry)
+- Apps that don't report their text at all fall back to what the keyboard typed, so correction still works there

@@ -617,6 +617,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         } catch (_: Exception) {
         }
 
+        shadow.setLength(0)
         val type = info.inputType
         val cls = type and InputType.TYPE_MASK_CLASS
         val variation = type and InputType.TYPE_MASK_VARIATION
@@ -633,12 +634,12 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val password = (cls == InputType.TYPE_CLASS_TEXT && (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
                 variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD || variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)) ||
                 (cls == InputType.TYPE_CLASS_NUMBER && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
-        val noSuggestions = type and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0
         val textClass = cls == InputType.TYPE_CLASS_TEXT
-        suggestionsActive = prefs.suggestions && textClass && !password && field != FieldKind.EMAIL &&
-                !(noSuggestions && variation != InputType.TYPE_TEXT_VARIATION_NORMAL && variation != InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE && variation != InputType.TYPE_TEXT_VARIATION_LONG_MESSAGE)
-        correctionActive = prefs.autocorrect && suggestionsActive && field == FieldKind.TEXT &&
-                variation != InputType.TYPE_TEXT_VARIATION_FILTER && !noSuggestions
+        // Many apps (chats, social apps, browsers, search boxes) mark their fields "no suggestions"
+        // or "filter" although people write real text there, so only passwords and e-mail
+        // addresses are left alone; everything else gets suggestions and autocorrect.
+        suggestionsActive = prefs.suggestions && textClass && !password && field != FieldKind.EMAIL
+        correctionActive = prefs.autocorrect && suggestionsActive
         learning = prefs.learnWords && !password && (info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
         capsAllowed = prefs.autoCaps && textClass && !password && field == FieldKind.TEXT &&
                 variation != InputType.TYPE_TEXT_VARIATION_FILTER
@@ -903,8 +904,21 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
 
     // ------------------------------------------------------------------ text helpers
 
-    private fun textBefore(n: Int = 64): String =
-        currentInputConnection?.getTextBeforeCursor(n, 0)?.toString() ?: ""
+    private fun textBefore(n: Int = 64): String {
+        val t = currentInputConnection?.getTextBeforeCursor(n, 0)
+        if (t != null) return t.toString()
+        // some apps don't report their text: fall back to what this keyboard typed there
+        return if (shadow.length <= n) shadow.toString() else shadow.substring(shadow.length - n)
+    }
+
+    /** What this keyboard typed into the current field (used only when the app hides its text). */
+    private val shadow = StringBuilder()
+
+    private fun shadowEdit(delete: Int, add: String) {
+        shadow.setLength(maxOf(0, shadow.length - delete))
+        shadow.append(add)
+        if (shadow.length > 256) shadow.delete(0, shadow.length - 128)
+    }
 
     private fun isWordChar(c: Char) = c.isLetterOrDigit()
 
@@ -934,6 +948,12 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val t = beforeWord.trimEnd()
         if (t.isEmpty() || !isWordChar(t.last())) return null
         return extractWord(t).lowercase(engine().locale).ifEmpty { null }
+    }
+
+    /** In an address bar: a query is being typed, not a web address. */
+    private fun looksLikeSearch(beforeWord: String): Boolean {
+        val tail = beforeWord.takeLastWhile { !it.isWhitespace() }
+        return tail.none { it == '.' || it == '/' || it == ':' || it == '@' }
     }
 
     private fun correctionAllowed(word: String, beforeWord: String): Boolean {
@@ -1075,7 +1095,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             finishCommit(ic, word, prev, null, sep)
             return
         }
-        val allow = correctionAllowed(word, beforeWord)
+        val allow = correctionAllowed(word, beforeWord) && (field != FieldKind.URL || (sep == " " && looksLikeSearch(beforeWord)))
         val c = cached
         if (c != null && c.word == word && c.prev == prev && c.allow == allow) {
             // the analysis of the word is ready: correct at once
@@ -1097,21 +1117,35 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
             }
             val cor = r?.correction
             val corrected = if (allow && cor != null && cor != word) cor else null
-            main.post {
-                val ic2 = currentInputConnection
-                if (corrected != null && ic2 != null && textBefore(word.length + sep.length + 1).let { tb ->
-                        tb.endsWith(word + sep) && (tb.length == word.length + sep.length || !tb[tb.length - word.length - sep.length - 1].isLetterOrDigit())
-                    }) {
-                    ic2.beginBatchEdit()
-                    ic2.deleteSurroundingText(word.length + sep.length, 0)
-                    ic2.commitText(corrected + sep, 1)
-                    ic2.endBatchEdit()
-                    lastCorrection = Correction(word, corrected, sep)
-                    learnCommitted(word, prev, corrected)
-                    if (seq == analyzeSeq) updateSuggestions()
-                } else learnCommitted(word, prev, null)
-            }
+            main.post { applyLate(word, prev, corrected, sep, seq, 0) }
         }
+    }
+
+    /**
+     * Swaps a word that was analysed after its separator went in. Some apps report their text a
+     * little late, so a missing match is retried briefly before giving up.
+     */
+    private fun applyLate(word: String, prev: String?, corrected: String?, sep: String, seq: Int, attempt: Int) {
+        val ic2 = currentInputConnection
+        if (corrected == null || ic2 == null) {
+            learnCommitted(word, prev, null); return
+        }
+        val tb = textBefore(word.length + sep.length + 1)
+        val ok = tb.endsWith(word + sep) &&
+                (tb.length == word.length + sep.length || !tb[tb.length - word.length - sep.length - 1].isLetterOrDigit())
+        if (!ok) {
+            if (attempt < 3) main.postDelayed({ applyLate(word, prev, corrected, sep, seq, attempt + 1) }, 40)
+            else learnCommitted(word, prev, null)
+            return
+        }
+        ic2.beginBatchEdit()
+        ic2.deleteSurroundingText(word.length + sep.length, 0)
+        ic2.commitText(corrected + sep, 1)
+        ic2.endBatchEdit()
+        shadowEdit(word.length + sep.length, corrected + sep)
+        lastCorrection = Correction(word, corrected, sep)
+        learnCommitted(word, prev, corrected)
+        updateSuggestions()
     }
 
     private fun finishCommit(ic: android.view.inputmethod.InputConnection, word: String, prev: String?, corrected: String?, sep: String, learn: Boolean = true) {
@@ -1119,9 +1153,11 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         if (corrected != null) {
             ic.deleteSurroundingText(word.length, 0)
             ic.commitText(corrected + sep, 1)
+            shadowEdit(word.length, corrected + sep)
             lastCorrection = Correction(word, corrected, sep)
         } else {
             if (sep.isNotEmpty()) ic.commitText(sep, 1)
+            shadowEdit(0, sep)
             lastCorrection = null
         }
         ic.endBatchEdit()
@@ -1172,6 +1208,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         } else {
             autoSpace = false
             ic.commitText(text, 1)
+            shadowEdit(0, text)
             lastCorrection = null
             if (text.isNotEmpty() && text.codePointAt(0) >= 0x2600 && Character.getType(text.codePointAt(0)) == Character.OTHER_SYMBOL.toInt()) {
                 emoji.addRecent(text)
@@ -1242,6 +1279,7 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         val ic = currentInputConnection ?: return
         cached = null
         autoSpace = false
+        shadowEdit(1, "")
         val lc = lastCorrection
         if (repeat == 0 && lc != null && prefs.undoCorrection) {
             val tail = lc.corrected + lc.sep
