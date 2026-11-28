@@ -59,6 +59,8 @@ object Ui {
         "Fénytörés erőssége" to "Refraction strength",
         "Színszóródás (szivárványos perem)" to "Dispersion (rainbow rim)",
         "Fényív a pereme mentén" to "Light arc along the rim",
+        "Fénytöréses üvegperem" to "Prism glass edge",
+        "Szivárványos fény a lap és a gombok szélén, fényes, csillanó gombok – mint a megtört fény egy üveglap peremén" to "Rainbow light along the edges of the sheet and keys, glossy keys – like light refracted at the edge of a glass pane",
         "Vékony fényív az üvegfelületek (gombok, lap, kijelölő) szélén" to "A thin light arc on the edge of glass surfaces (keys, sheet, capsule)",
         "Vastag, domború hatás: csillanás a peremen, erősebb fénytörés a széleken" to "Thick, convex look: glints on the rim, stronger refraction at the edges",
         "Buborékok és kijelölés" to "Pop-ups and selection",

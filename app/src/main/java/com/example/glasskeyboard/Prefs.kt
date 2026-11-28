@@ -22,6 +22,8 @@ data class GlassParams(
     val keyDarken: Int = 0,
     val rim: Boolean = true,
     val convex: Boolean = false,
+    /** prism edge: rainbow light along the glass edges and glossy keys */
+    val prism: Boolean = true,
     /** selection capsules (suggestion pill, accent picker): 0 liquid glass, 1 frosted glass */
     val lensStyle: Int = 0,
 )
@@ -103,12 +105,13 @@ class Prefs(context: Context) {
         keyDarken = sp.getInt(K_KEY_DARK, 0),
         rim = b(K_RIM, true),
         convex = b(K_CONVEX, false),
+        prism = b(K_PRISM, true),
         lensStyle = sp.getInt(K_LENS_STYLE, 0),
     )
 
     fun resetGlass() {
         sp.edit().remove(K_GLASS).remove(K_THEME).remove(K_HUE).remove(K_HUE_STRENGTH).remove(K_BLUR)
-            .remove(K_REFR_H).remove(K_REFR_OFF).remove(K_DISP).remove(K_GLASS_DARK).remove(K_KEY_DARK).remove(K_RIM).remove(K_CONVEX).remove(K_LENS_STYLE).remove(K_POPUP_GLASS).remove(K_POPUP_BLUR).remove(K_PREVIEW_GLASS).remove(K_TOOL_GLASS)
+            .remove(K_REFR_H).remove(K_REFR_OFF).remove(K_DISP).remove(K_GLASS_DARK).remove(K_KEY_DARK).remove(K_RIM).remove(K_CONVEX).remove(K_PRISM).remove(K_LENS_STYLE).remove(K_POPUP_GLASS).remove(K_POPUP_BLUR).remove(K_PREVIEW_GLASS).remove(K_TOOL_GLASS)
             .remove(K_PANEL_OPACITY).remove(K_KEY_OPACITY).apply()
     }
 
@@ -193,6 +196,7 @@ class Prefs(context: Context) {
         const val K_GLASS_DARK = "glass_dark"
         const val K_KEY_DARK = "key_dark"
         const val K_RIM = "glass_rim"
+        const val K_PRISM = "glass_prism"
         const val K_CONVEX = "glass_convex"
         const val K_LENS_STYLE = "lens_style"
         const val K_POPUP_GLASS = "popup_glass"

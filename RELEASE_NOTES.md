@@ -1,6 +1,5 @@
-## Glass Keyboard 1.3.3
+## Glass Keyboard 1.4.0
 
-- **Autocorrect now works in every app.** Fields that apps mark as "no suggestions" or "filter" (chats, social apps, search boxes, many WebView/Flutter/React Native apps) are corrected too – only password and e-mail address fields are left alone
-- **Browser address bars:** search queries are corrected when you press space; web addresses (anything with `.`, `/`, `:` or `@`) are never touched
-- Apps that report their text a little late no longer miss the correction (short retry)
-- Apps that don't report their text at all fall back to what the keyboard typed, so correction still works there
+- **Prism glass edge** (new, on by default – Settings → Glass): light refracted inside the edge of the glass sheet, a soft rainbow glow along the top and down the sides (mint on the left, lilac/pink on the right), with a crisp bright rim all round
+- **Glossy keys:** a bright reflection on the upper half of every key and a faint rainbow split at their left and right edges
+- Can be switched off with the new "Prism glass edge" toggle; solid backgrounds and the "no glass" style are unchanged

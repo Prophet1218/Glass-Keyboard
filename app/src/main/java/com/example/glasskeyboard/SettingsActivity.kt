@@ -200,6 +200,7 @@ class SettingsActivity : Activity() {
         glass.addView(seekRow(T("Színszóródás (szivárványos perem)"), Prefs.K_DISP, 0, 100, 10, ""))
         glass.addView(switchRow(T("Fényív a pereme mentén"), T("Vékony fényív az üvegfelületek (gombok, lap, kijelölő) szélén"), Prefs.K_RIM, true))
         glass.addView(switchRow(T("Domború (3D) üveg"), T("Vastag, domború hatás: csillanás a peremen, erősebb fénytörés a széleken"), Prefs.K_CONVEX, false))
+        glass.addView(switchRow(T("Fénytöréses üvegperem"), T("Szivárványos fény a lap és a gombok szélén, fényes, csillanó gombok – mint a megtört fény egy üveglap peremén"), Prefs.K_PRISM, true))
         glass.addView(actionRow(T("Alapértelmezett üvegbeállítások visszaállítása"), T("Az üveg típusa, árnyalata, színe, átlátszósága, az elmosás, a fénytörés és a színszóródás visszaáll az eredeti értékre.")) {
             dialog().setMessage(T("Visszaállítod az üvegbeállításokat?"))
                 .setPositiveButton(T("Visszaállítás")) { _, _ ->
