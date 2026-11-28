@@ -1,4 +1,4 @@
-## Glass Keyboard 1.4.1
+## Vitra 1.5.0
 
-- The prism edge and glossy keys from 1.4.0 are removed again – the look is back to 1.3.3
-- **Fixed:** the blurred background no longer shows as a square behind the sheet's rounded top corners; the blur now follows the corner radius setting
+- **Glass Keyboard is now called Vitra** (from the Latin *vitrum*, glass). The new name shows under the app icon, in the keyboard picker and in the settings
+- It updates the existing app in place – your settings and learned words are kept

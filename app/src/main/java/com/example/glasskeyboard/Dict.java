@@ -21,7 +21,7 @@ public final class Dict {
     public Dict(ByteBuffer buffer) {
         this.b = buffer;
         if (b.get(0) != 'G' || b.get(1) != 'K' || b.get(2) != 'D' || b.get(3) != '1') {
-            throw new IllegalArgumentException("Not a Glass Keyboard dictionary");
+            throw new IllegalArgumentException("Not a Vitra dictionary");
         }
         this.nodeCount = b.getInt(4);
     }

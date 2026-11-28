@@ -1,12 +1,12 @@
-# Glass Keyboard
+# Vitra
 
 An Android keyboard modelled on the liquid glass look of the iOS 27 keyboard, with Hungarian and
-English, and autocorrect tuned for Hungarian.
+English, and autocorrect tuned for Hungarian. *(Formerly called Glass Keyboard.)*
 
 ## Installation
 
-1. Download the newest `GlassKeyboard-x.y.z.apk` from the repository's **Releases** and install it.
-2. Open the **Glass Keyboard** app and follow the two steps: enable it in the system settings,
+1. Download the newest `Vitra-x.y.z.apk` from the repository's **Releases** and install it.
+2. Open the **Vitra** app and follow the two steps: enable it in the system settings,
    then select it.
 3. You can try it right away in the text field in the app.
 

@@ -235,8 +235,8 @@ class GifPanel(
         val key = prefs.klipyKey
         if (key.isEmpty()) {
             message(
-                if (hungarian) "A GIF-ekhez egy ingyenes KLIPY API kulcs kell (a Tenor API-t a Google 2026 júniusában leállította).\n\nKérj kulcsot a partner.klipy.com oldalon, és írd be a Glass Keyboard beállításaiban a „GIF” résznél."
-                else "GIFs need a free KLIPY API key (Google shut down the Tenor API in June 2026). Get one at partner.klipy.com and enter it in the Glass Keyboard settings."
+                if (hungarian) "A GIF-ekhez egy ingyenes KLIPY API kulcs kell (a Tenor API-t a Google 2026 júniusában leállította).\n\nKérj kulcsot a partner.klipy.com oldalon, és írd be a Vitra beállításaiban a „GIF” résznél."
+                else "GIFs need a free KLIPY API key (Google shut down the Tenor API in June 2026). Get one at partner.klipy.com and enter it in the Vitra settings."
             )
             return
         }

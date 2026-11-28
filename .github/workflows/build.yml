@@ -32,7 +32,7 @@ jobs:
         run: echo "name=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
       - name: Rename
-        run: cp app/build/outputs/apk/release/app-release.apk GlassKeyboard-${{ steps.ver.outputs.name }}.apk
+        run: cp app/build/outputs/apk/release/app-release.apk Vitra-${{ steps.ver.outputs.name }}.apk
 
       - name: Delete old releases (keep only the newest)
         env:
@@ -48,8 +48,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.name }}
-          name: Glass Keyboard ${{ steps.ver.outputs.name }}
-          files: GlassKeyboard-${{ steps.ver.outputs.name }}.apk
+          name: Vitra ${{ steps.ver.outputs.name }}
+          files: Vitra-${{ steps.ver.outputs.name }}.apk
           body_path: RELEASE_NOTES.md
           overwrite_files: true
           make_latest: true

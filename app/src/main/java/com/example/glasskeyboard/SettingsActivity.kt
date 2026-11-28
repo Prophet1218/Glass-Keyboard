@@ -103,7 +103,7 @@ class SettingsActivity : Activity() {
             }
         })
 
-        content.addView(text("Glass Keyboard", 32f, textColor, bold = true))
+        content.addView(text("Vitra", 32f, textColor, bold = true))
         content.addView(text(T("Folyékony üveg billentyűzet • magyar és angol") + " • v${version()}", 14f, softColor).also {
             (it.layoutParams as? LinearLayout.LayoutParams)?.bottomMargin = (14 * dp).toInt()
         })
@@ -120,7 +120,7 @@ class SettingsActivity : Activity() {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
         })
         setup.addView(status2)
-        setup.addView(button(T("2. Glass Keyboard kiválasztása")) {
+        setup.addView(button(T("2. Vitra kiválasztása")) {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
         })
         val test = EditText(this)

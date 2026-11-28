@@ -97,7 +97,7 @@ object Ui {
         "Napló törlése" to "Clear log",
         "Beállítás" to "Setup",
         "1. Bekapcsolás a rendszerben" to "1. Enable in system settings",
-        "2. Glass Keyboard kiválasztása" to "2. Select Glass Keyboard",
+        "2. Vitra kiválasztása" to "2. Select Vitra",
         "Próbáld ki itt…" to "Try it here…",
         "Nyelvek" to "Languages",
         "Magyar" to "Hungarian",
