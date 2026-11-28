@@ -6,8 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.ComposeShader
-import android.graphics.PorterDuff
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -291,99 +289,6 @@ class GlassTheme(
         c.drawRoundRect(tmp, radius - 0.6f * dp, radius - 0.6f * dp, rimPaint)
         rimPaint.shader = null
         rimPaint.alpha = 255
-        if (prism) drawKeyPrism(c, r, radius)
-    }
-
-    // ------------------------------------------------------------ prism glass edge
-
-    /** Rainbow light along the glass edges and glossy keys (setting). */
-    val prism = params.prism && !solid && !solidBg
-
-    private val prismA = if (dark) 0.55f else 1f
-    private val prismMint = withAlpha(0xFF5CF0CF.toInt(), 0.62f * prismA)
-    private val prismSky = withAlpha(0xFF7CC8FF.toInt(), 0.50f * prismA)
-    private val prismLilac = withAlpha(0xFFB49BFF.toInt(), 0.58f * prismA)
-    private val prismPink = withAlpha(0xFFFF9ED8.toInt(), 0.50f * prismA)
-
-    /** horizontal 0..1 rainbow for the key edges */
-    private val keyPrismShader = LinearGradient(
-        0f, 0f, 1f, 0f,
-        intArrayOf(withAlpha(prismMint, 0.9f), 0x00FFFFFF, 0x00FFFFFF, withAlpha(prismLilac, 0.9f)),
-        floatArrayOf(0f, 0.38f, 0.62f, 1f), Shader.TileMode.CLAMP
-    )
-    /** vertical 0..1 gloss on the upper part of a key */
-    private val keyGloss = LinearGradient(
-        0f, 0f, 0f, 1f,
-        intArrayOf(if (dark) 0x2EFFFFFF else 0x66FFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP
-    )
-    private val prismPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    private val prismFill = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    private fun drawKeyPrism(c: Canvas, r: RectF, radius: Float) {
-        // the light splits into colours at the left and right edges of the key
-        m.setScale(r.width(), 1f)
-        m.postTranslate(r.left, 0f)
-        keyPrismShader.setLocalMatrix(m)
-        prismPaint.shader = keyPrismShader
-        prismPaint.strokeWidth = 1.1f * dp
-        prismPaint.alpha = (255 * keyAlpha).toInt()
-        tmp.set(r.left + 0.7f * dp, r.top + 0.7f * dp, r.right - 0.7f * dp, r.bottom - 0.7f * dp)
-        c.drawRoundRect(tmp, radius - 0.7f * dp, radius - 0.7f * dp, prismPaint)
-        prismPaint.shader = null
-        // glossy upper half: a bright reflection inset from the edges
-        val ins = 1.6f * dp
-        tmp.set(r.left + ins, r.top + ins, r.right - ins, r.top + r.height() * 0.5f)
-        m.setScale(1f, tmp.height())
-        m.postTranslate(0f, tmp.top)
-        keyGloss.setLocalMatrix(m)
-        prismFill.shader = keyGloss
-        prismFill.alpha = (255 * keyAlpha).toInt()
-        val gr = maxOf(radius - ins, 0f)
-        c.drawRoundRect(tmp, gr, gr, prismFill)
-        prismFill.shader = null
-    }
-
-    private var edgeKey = 0L
-    private var edgeTop: Shader? = null
-    private var edgeLeft: Shader? = null
-    private var edgeRight: Shader? = null
-
-    /**
-     * Light refracted inside the edge of the glass sheet: a soft rainbow glow along the top and
-     * down the sides (mint on the left, lilac/pink on the right), like the thick edge of a pane.
-     */
-    private fun drawPanelPrism(c: Canvas, clip: Path, left: Float, top: Float, right: Float, bottom: Float) {
-        val w = right - left
-        val h = bottom - top
-        val band = 14f * dp
-        val key = (w.toLong() shl 40) xor (h.toLong() shl 20) xor top.toLong()
-        if (key != edgeKey || edgeTop == null) {
-            edgeKey = key
-            val fadeV = LinearGradient(0f, top, 0f, top + band, Color.WHITE, 0x00FFFFFF, Shader.TileMode.CLAMP)
-            val colsH = LinearGradient(
-                left, 0f, right, 0f,
-                intArrayOf(prismMint, prismSky, withAlpha(Color.WHITE, 0.35f * prismA), prismLilac, prismPink),
-                floatArrayOf(0f, 0.22f, 0.5f, 0.8f, 1f), Shader.TileMode.CLAMP
-            )
-            edgeTop = ComposeShader(colsH, fadeV, PorterDuff.Mode.DST_IN)
-            val downL = LinearGradient(0f, top, 0f, bottom, intArrayOf(prismMint, withAlpha(prismSky, 0.6f), withAlpha(prismSky, 0.25f)), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-            val fadeL = LinearGradient(left, 0f, left + band, 0f, Color.WHITE, 0x00FFFFFF, Shader.TileMode.CLAMP)
-            edgeLeft = ComposeShader(downL, fadeL, PorterDuff.Mode.DST_IN)
-            val downR = LinearGradient(0f, top, 0f, bottom, intArrayOf(prismPink, withAlpha(prismLilac, 0.6f), withAlpha(prismLilac, 0.25f)), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-            val fadeR = LinearGradient(right, 0f, right - band, 0f, Color.WHITE, 0x00FFFFFF, Shader.TileMode.CLAMP)
-            edgeRight = ComposeShader(downR, fadeR, PorterDuff.Mode.DST_IN)
-        }
-        c.save()
-        c.clipPath(clip)
-        prismFill.alpha = 255
-        prismFill.shader = edgeTop
-        c.drawRect(left, top, right, top + band, prismFill)
-        prismFill.shader = edgeLeft
-        c.drawRect(left, top, left + band, bottom, prismFill)
-        prismFill.shader = edgeRight
-        c.drawRect(right - band, top, right, bottom, prismFill)
-        prismFill.shader = null
-        c.restore()
     }
 
     /** Glass surface for popups (any outline). */
@@ -446,23 +351,7 @@ class GlassTheme(
             grainPaint.alpha = (grainBase * panelAlpha).toInt()
             c.drawPath(path, grainPaint)
         }
-        if (prism) drawPanelPrism(c, path, left, top, right, bottom)
         if (!params.rim) return
-        if (prism) {
-            // a crisp bright edge all round: brightest on top, fading down the sides
-            tmp.set(left + 0.5f * dp, top + 0.5f * dp, right - 0.5f * dp, bottom + r)
-            rimPaint.color = Color.WHITE
-            rimPaint.strokeWidth = 1.1f * dp
-            rimPaint.shader = LinearGradient(
-                0f, top, 0f, bottom,
-                intArrayOf(panelRim, withAlpha(panelRim, 0.5f), withAlpha(panelRim, 0.18f)),
-                floatArrayOf(0f, 0.12f, 1f), Shader.TileMode.CLAMP
-            )
-            c.drawRoundRect(tmp, maxOf(r, 0.5f * dp), maxOf(r, 0.5f * dp), rimPaint)
-            rimPaint.shader = null
-            rimPaint.strokeWidth = (if (liquid) 1.2f else 1f) * dp
-            return
-        }
         // the light arc along the top edge fades out as it turns down at the corners, instead
         // of ending in a hard cut where it was clipped
         val fadeLen = maxOf(r, 10f * dp)

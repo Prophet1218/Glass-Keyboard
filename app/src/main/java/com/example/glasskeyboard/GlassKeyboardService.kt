@@ -498,6 +498,8 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         }
     }
 
+    private var windowBgRadius = -1f
+
     private fun styleNavBar(t: GlassTheme) {
         val w = window?.window ?: return
         w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
@@ -505,9 +507,17 @@ class GlassKeyboardService : InputMethodService(), KeyboardActions, EmojiActions
         w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
         if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
         // transparent window: the rounded sheet and the app behind it decide what is seen
-        val bg = w.decorView.background
-        if (!(bg is android.graphics.drawable.ColorDrawable && bg.color == android.graphics.Color.TRANSPARENT)) {
-            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        // The background blur of the window takes its corner radius from the window background's
+        // outline, so a transparent rounded shape keeps the blur inside the sheet's rounded corners
+        // (otherwise the blurred square shows behind them).
+        val radius = t.panelRadius
+        if (windowBgRadius != radius || w.decorView.background !is android.graphics.drawable.GradientDrawable) {
+            windowBgRadius = radius
+            w.setBackgroundDrawable(android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.TRANSPARENT)
+                cornerRadius = radius
+            })
+            applyWindowBlur(t, force = true)
         }
         // window nav colour + the system's keyboard bar view (black by default), kept every frame
         navGuard.attach(w, navColor(t))
